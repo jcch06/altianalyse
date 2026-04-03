@@ -1,5 +1,4 @@
-pandas==2.2.2
-supabase==2.4.5
-python-dotenv==1.0.1
-streamlit
+pandas
+supabase
+python-dotenv
 matplotlib
