@@ -3,14 +3,13 @@ import math
 import pandas as pd
 import streamlit as st
 from datetime import datetime, date
-from dotenv import load_dotenv
 from supabase import create_client, Client
 import matplotlib.pyplot as plt
 
 # ==========================================
-# 1. CONFIGURATION DE LA PAGE
+# 1. CONFIGURATION DE LA PAGE (Une seule fois !)
 # ==========================================
-st.set_page_config(page_title="Plateforme Altileo Analyse", layout="wide")
+st.set_page_config(page_title="Altileo PRO - Audit Energetique", layout="wide")
 
 # Custom CSS pour un rendu épuré et professionnel
 st.markdown("""
@@ -30,16 +29,28 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ==========================================
-# 2. CONNEXION SUPABASE & CACHE
+# 2. GESTION DES IDENTIFIANTS (Local vs Web)
 # ==========================================
-load_dotenv()
-SUPABASE_URL = os.getenv("SUPABASE_URL")
-SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
 
+if "SUPABASE_URL" in st.secrets:
+    SUPABASE_URL = st.secrets["SUPABASE_URL"]
+    SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
+else:
+    SUPABASE_URL = os.getenv("SUPABASE_URL")
+    SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+
+# ==========================================
+# 3. FONCTIONS DE CALCUL & CACHE
+# ==========================================
 @st.cache_data(show_spinner=False)
 def fetch_supabase_data(start_date: str, end_date: str, table_name: str, sensors: list):
     if not SUPABASE_URL or not SUPABASE_KEY:
-        st.error("Identifiants Supabase introuvables. Vérifiez votre fichier .env")
+        st.error("Identifiants Supabase introuvables. Configurez vos secrets Streamlit.")
         return pd.DataFrame()
         
     supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
@@ -189,7 +200,7 @@ def calculate_period_summary(df: pd.DataFrame, saison: str, tarifs: dict) -> dic
     }
 
 # ==========================================
-# 3. INTERFACE UTILISATEUR
+# 4. INTERFACE UTILISATEUR
 # ==========================================
 st.markdown("<h2 class='main-header'>Plateforme Altileo Analyse</h2>", unsafe_allow_html=True)
 
@@ -233,7 +244,7 @@ with st.sidebar:
     cee = st.number_input("Prime CEE Globale (€)", value=1500.0)
 
 # ==========================================
-# 4. MOTEUR D'EXÉCUTION
+# 5. MOTEUR D'EXÉCUTION
 # ==========================================
 with st.spinner("Analyse thermodynamique et financière en cours..."):
     df_raw = fetch_supabase_data(str(d_start), str(d_end), t_name, [s_comp, s_cvc])
@@ -288,7 +299,7 @@ with st.spinner("Analyse thermodynamique et financière en cours..."):
     roi = (i_net / gain_an_net * 12) if gain_an_net > 0 else 0
 
 # ==========================================
-# 5. AFFICHAGE DES RÉSULTATS
+# 6. AFFICHAGE DES RÉSULTATS
 # ==========================================
 tab_dashboard, tab_details, tab_charts = st.tabs(["Indicateurs Financiers", "Audit Détaillé (Jours/Semaines)", "Modélisation Graphique"])
 
