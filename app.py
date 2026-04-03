@@ -42,10 +42,12 @@ try:
 except ImportError:
     pass
 
-if "SUPABASE_URL" in st.secrets:
+try:
+    # 1. On essaie de lire les secrets Streamlit (Cloud)
     SUPABASE_URL = st.secrets["SUPABASE_URL"]
     SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
-else:
+except Exception:
+    # 2. Si ça plante (en local car pas de fichier secrets.toml), on prend le .env
     SUPABASE_URL = os.getenv("SUPABASE_URL")
     SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 
@@ -128,6 +130,7 @@ def process_data(df: pd.DataFrame, sensor_comp: str, sensor_cvc: str, tarifs: di
 def generate_detailed_dataframes(df: pd.DataFrame):
     if df.empty: return pd.DataFrame(), pd.DataFrame()
     
+    # 1. Détail Journalier
     daily_records = []
     for d in sorted(df['date'].unique()):
         df_d = df[df['date'] == d]
@@ -145,6 +148,7 @@ def generate_detailed_dataframes(df: pd.DataFrame):
             'CVC HP (kWh)': round(v_hp, 2), 'CVC HC (kWh)': round(v_hc, 2), 'Total (kWh)': round(tot, 2)
         })
         
+    # 2. Détail Hebdomadaire
     df_w = df.copy()
     df_w['timestamp'] = pd.to_datetime(df_w['timestamp'])
     df_w['week'] = df_w['timestamp'].dt.to_period('W-SUN').apply(lambda r: f"{r.start_time.strftime('%d/%m/%Y')} - {r.end_time.strftime('%d/%m/%Y')}")
@@ -243,7 +247,7 @@ with st.sidebar:
     cee = st.number_input("Prime CEE Globale (€)", value=1500.0)
 
 # ==========================================
-# 5. MOTEUR D'EXÉCUTION (MODIFIÉ)
+# 5. MOTEUR D'EXÉCUTION
 # ==========================================
 
 if st.button("🚀 Lancer l'Analyse Altileo", type="primary", use_container_width=True):
