@@ -99,7 +99,7 @@ class EnergyCalculator:
             tarif.loc[(df_sensor['saison'] == 'hiver') & (df_sensor['type_heure'] == 'HC')] = tarifs['hc_hiv']
             tarif.loc[(df_sensor['saison'] == 'ete') & (df_sensor['type_heure'] == 'HC')] = tarifs['hc_ete']
             
-            df_sensor['cout_euros'] = df_sensor['energie_kwh'] * (tarif + tarifs['turpe'] + tarifs['taxes']) * 1.20
+            df_sensor['cout_euros'] = df_sensor['energie_kwh'] * (tarif + tarifs['turpe'] + tarifs['taxes'])
             processed_dfs.append(df_sensor)
             
         return pd.concat(processed_dfs, ignore_index=True)
@@ -152,7 +152,7 @@ class EnergyCalculator:
             'kwh_mois_hp': kwh_mois_hp, 'kwh_mois_hc': kwh_mois_hc, 'kwh_mois_total': kwh_mois_hp + kwh_mois_hc,
             'tarif_hp': tarif_hp, 'tarif_hc': tarif_hc, 'tarif_turpe': tarifs['turpe'], 'tarif_taxes': tarifs['taxes'],
             'f_hp': f_hp, 'f_hc': f_hc, 'turpe': turpe, 'taxes': taxes,
-            'tva': total_ht * 0.20, 'total_ttc': total_ht * 1.20
+            'tva': total_ht * 0.20, 'total_ttc': total_ht * 1.20, 'total_ht': total_ht
         }
 
 # ==========================================
@@ -225,10 +225,10 @@ class EnergyApp(tb.Window):
 
         # --- TAB 2 : ROI ---
         roi_box = tb.Frame(tab_roi); roi_box.pack(fill=X, pady=10, padx=10)
-        # Ajout des corrections de Marge de Sécurité et de Maintenance
+        # Ajout des corrections B2B Altileo
         r_vars = [("Délestage (h):", "8"), ("Rattrapage (%):", "20"), ("Marge Sécurité (%):", "15"), 
-                  ("Bonus COP (%):", "5"), ("Gain Abo (€):", "50"), ("Nb Chambres:", "1"), 
-                  ("Prix/ch (€):", "2500"), ("Prime CEE (€):", "1500"), ("Maintenance (€/an/ch):", "150")]
+                  ("Bonus COP (%):", "5"), ("Gain Abo (€):", "0"), ("Nb Chambres:", "1"), 
+                  ("Prix/ch (€):", "1500"), ("Prime CEE (€):", "0"), ("Abonnement SaaS (€/an/ch):", "360")]
         self.r_entries = {}
         for i, (lbl, val) in enumerate(r_vars):
             tb.Label(roi_box, text=lbl).grid(row=i//2, column=(i%2)*2, sticky=W, padx=5, pady=5)
@@ -308,12 +308,13 @@ class EnergyApp(tb.Window):
         nb = int(self.r_entries["Nb Chambres:"].get())
         pr = float(self.r_entries["Prix/ch (€):"].get())
         cee = float(self.r_entries["Prime CEE (€):"].get())
-        maint = float(self.r_entries["Maintenance (€/an/ch):"].get())
+        saas = float(self.r_entries["Abonnement SaaS (€/an/ch):"].get())
         
         s_h = self.sum_h if self.sum_h else self.sum_e
         s_e = self.sum_e if self.sum_e else self.sum_h
         
-        f_ref_an = (s_h['total_ttc'] * nb * 5) + (s_e['total_ttc'] * nb * 7)
+        # Passage en HT
+        f_ref_an = (s_h['total_ht'] * nb * 5) + (s_e['total_ht'] * nb * 7)
         k_ref_an = (s_h['kwh_mois_total'] * nb * 5) + (s_e['kwh_mois_total'] * nb * 7)
         
         def get_sim_metrics(s):
@@ -321,23 +322,22 @@ class EnergyApp(tb.Window):
             k_hp_base, k_hc_base = s['kwh_mois_hp'] * nb, s['kwh_mois_hc'] * nb
             k_effaces = k_hp_base * (h / 16.0)
             
-            # CORRECTION 5: Application du Facteur de Sécurité
             k_rattrapes = k_effaces * r * (1.0 - cop) * (1.0 + sec)
             
             k_hp_sim, k_hc_sim = k_hp_base - k_effaces, k_hc_base + k_rattrapes
             f_hp_sim, f_hc_sim = k_hp_sim * s['tarif_hp'], k_hc_sim * s['tarif_hc']
             turpe_sim, taxes_sim = (k_hp_sim + k_hc_sim) * s['tarif_turpe'], (k_hp_sim + k_hc_sim) * s['tarif_taxes']
             
-            total_ttc_sim = (f_hp_sim + f_hc_sim + turpe_sim + taxes_sim) * 1.20 - (abo * nb)
-            return (s['total_ttc'] * nb) - total_ttc_sim, (k_effaces - k_rattrapes)
+            # Plus de TVA ici
+            total_ht_sim = (f_hp_sim + f_hc_sim + turpe_sim + taxes_sim) - (abo * nb)
+            return (s['total_ht'] * nb) - total_ht_sim, (k_effaces - k_rattrapes)
 
         gh, kh = get_sim_metrics(s_h)
         ge, ke = get_sim_metrics(s_e)
         
         gain_an_brut = (gh * 5) + (ge * 7)
         
-        # CORRECTION 6: Calcul du Gain Net (déduction maintenance)
-        gain_an_net = gain_an_brut - (maint * nb)
+        gain_an_net = gain_an_brut - (saas * nb)
         
         pct = (gain_an_brut / f_ref_an * 100) if f_ref_an > 0 else 0
         i_net = max(0, pr*nb - cee)
@@ -347,7 +347,7 @@ class EnergyApp(tb.Window):
                f"📉 Conso annuelle Réf : {k_ref_an:,.0f} kWh/an\n"
                f"📊 Facture annuelle Réf: {f_ref_an:,.2f} €/an\n\n"
                f"💰 ÉCONOMIE BRUTE ÉNERGIE : {gain_an_brut:,.2f} €/an\n"
-               f"🔧 Maintenance Annuelle   : -{maint*nb:,.2f} €/an\n"
+               f"💻 Abonnement SaaS        : -{saas*nb:,.2f} €/an\n"
                f"💶 GAIN NET EXPLOITATION  : {gain_an_net:,.2f} €/an\n"
                f"✨ OPTIMISATION GLOBALE   : -{pct:.1f} %\n"
                f"----------------------------------------\n"
@@ -371,21 +371,21 @@ class EnergyApp(tb.Window):
             
             f_hp_ap, f_hc_ap = k_hp_sim * s['tarif_hp'], k_hc_sim * s['tarif_hc']
             t_ap, tax_ap = (k_hp_sim + k_hc_sim) * s['tarif_turpe'], (k_hp_sim + k_hc_sim) * s['tarif_taxes']
-            tot_ttc_ap = (f_hp_ap + f_hc_ap + t_ap + tax_ap) * 1.20 - (abo * nb)
             
-            b_av = [s['f_hc']*nb, s['f_hp']*nb, s['turpe']*nb, s['taxes']*nb, s['tva']*nb]
-            b_ap = [f_hc_ap, f_hp_ap, t_ap, tax_ap, max(0, tot_ttc_ap - (tot_ttc_ap/1.2))]
+            # Plus de TVA dans l'empilement
+            b_av = [s['f_hc']*nb, s['f_hp']*nb, s['turpe']*nb, s['taxes']*nb]
+            b_ap = [f_hc_ap, f_hp_ap, t_ap, tax_ap]
             
-            clrs = ['#3498db', '#fd7e14', '#95a5a6', '#adb5bd', '#198754']
+            clrs = ['#3498db', '#fd7e14', '#95a5a6', '#adb5bd']
             c_av, c_ap = 0, 0
-            for i in range(5):
+            for i in range(4):
                 ax.bar('Actuel', b_av[i], bottom=c_av, color=clrs[i], width=0.5)
                 ax.bar('Altileo', b_ap[i], bottom=c_ap, color=clrs[i], width=0.5)
                 if b_av[i]>15: ax.text(0, c_av+b_av[i]/2, f"{b_av[i]:.0f}€", ha='center', color='w', fontweight='bold', fontsize=8)
                 if b_ap[i]>15: ax.text(1, c_ap+b_ap[i]/2, f"{b_ap[i]:.0f}€", ha='center', color='w', fontweight='bold', fontsize=8)
                 c_av += b_av[i]; c_ap += b_ap[i]
                 
-            ax.set_title(f"Facture {title} (TTC)"); ax.set_ylabel("Euros / Mois")
+            ax.set_title(f"Facture {title} (HT)"); ax.set_ylabel("Euros / Mois")
             g = c_av - c_ap
             if g>0: ax.annotate(f"-{g:.0f}€\n(-{g/c_av*100:.1f}%)", xy=(1, c_ap), xytext=(0, c_av), arrowprops=dict(arrowstyle="->", color="#198754", lw=1.5), color="#198754", fontweight="bold", ha='center', bbox=dict(boxstyle="round", fc="w", ec="#198754"))
             
