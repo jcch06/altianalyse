@@ -121,7 +121,7 @@ def process_data(df: pd.DataFrame, sensor_comp: str, sensor_cvc: str, tarifs: di
         tarif.loc[(df_sensor['saison'] == 'hiver') & (df_sensor['type_heure'] == 'HC')] = tarifs['hc_hiv']
         tarif.loc[(df_sensor['saison'] == 'ete') & (df_sensor['type_heure'] == 'HC')] = tarifs['hc_ete']
         
-        df_sensor['cout_euros'] = df_sensor['energie_kwh'] * (tarif + tarifs['turpe'] + tarifs['taxes']) * 1.20
+        df_sensor['cout_euros'] = df_sensor['energie_kwh'] * (tarif + tarifs['turpe'] + tarifs['taxes'])
         processed_dfs.append(df_sensor)
         
     return pd.concat(processed_dfs, ignore_index=True)
@@ -193,13 +193,12 @@ def calculate_period_summary(df: pd.DataFrame, saison: str, tarifs: dict) -> dic
     taxes = (kwh_mois_hp + kwh_mois_hc) * tarifs['taxes']
     
     total_ht = f_hp + f_hc + turpe + taxes
-    total_ttc = total_ht * 1.20
     
     return {
         'kwh_mois_hp': kwh_mois_hp, 'kwh_mois_hc': kwh_mois_hc, 'kwh_mois_total': kwh_mois_hp + kwh_mois_hc,
         'tarif_hp': tarif_hp, 'tarif_hc': tarif_hc, 'tarif_turpe': tarifs['turpe'], 'tarif_taxes': tarifs['taxes'],
         'f_hp': f_hp, 'f_hc': f_hc, 'turpe': turpe, 'taxes': taxes,
-        'tva': total_ht * 0.20, 'total_ttc': total_ttc
+        'total_ht': total_ht
     }
 
 # ==========================================
@@ -237,14 +236,14 @@ with st.sidebar:
     sec = st.slider("Marge Sécurité (%)", 0, 50, 15, 1) / 100.0
     cop = st.slider("Bonus COP Nuit (%)", 0, 50, 5, 1) / 100.0
     
-    abo = st.number_input("Gain Abo kVA (€/mois/ch)", value=50.0)
-    maint = st.number_input("Maintenance (€/an/ch)", value=150.0)
+    abo = st.number_input("Gain Abo kVA (€/mois/ch)", value=0.0)
+    saas = st.number_input("Abonnement SaaS (€/an/ch)", value=360.0)
     
     st.markdown("---")
     st.header("Déploiement")
     nb = st.number_input("Nombre de Chambres", min_value=1, value=1)
-    pr = st.number_input("Prix Install/ch (€)", value=2500.0)
-    cee = st.number_input("Prime CEE Globale (€)", value=1500.0)
+    pr = st.number_input("Prix Install/ch (€)", value=1500.0)
+    cee = st.number_input("Prime CEE Globale (€)", value=0.0)
 
 # ==========================================
 # 5. MOTEUR D'EXÉCUTION
@@ -271,11 +270,11 @@ else:
         s_h = sum_h if sum_h else sum_e
         s_e = sum_e if sum_e else sum_h
         
-        # KPIs Référence
-        f_ref_an = (s_h.get('total_ttc', 0) * nb * 5) + (s_e.get('total_ttc', 0) * nb * 7)
+        # KPIs Référence (HT)
+        f_ref_an = (s_h.get('total_ht', 0) * nb * 5) + (s_e.get('total_ht', 0) * nb * 7)
         k_ref_an = (s_h.get('kwh_mois_total', 0) * nb * 5) + (s_e.get('kwh_mois_total', 0) * nb * 7)
 
-        # Fonction de Simulation Financière
+        # Fonction de Simulation Financière (HT)
         def get_sim_metrics(s):
             if not s: return 0.0, 0.0
             k_hp_base = s.get('kwh_mois_hp', 0) * nb
@@ -292,8 +291,8 @@ else:
             turpe_sim = (k_hp_sim + k_hc_sim) * s.get('tarif_turpe', 0)
             taxes_sim = (k_hp_sim + k_hc_sim) * s.get('tarif_taxes', 0)
             
-            total_ttc_sim = (f_hp_sim + f_hc_sim + turpe_sim + taxes_sim) * 1.20 - (abo * nb)
-            gain = (s.get('total_ttc', 0) * nb) - total_ttc_sim
+            total_ht_sim = (f_hp_sim + f_hc_sim + turpe_sim + taxes_sim) - (abo * nb)
+            gain = (s.get('total_ht', 0) * nb) - total_ht_sim
             
             return gain, (k_effaces - k_rattrapes)
 
@@ -301,7 +300,7 @@ else:
         ge, ke = get_sim_metrics(s_e)
         
         gain_an_brut = (gh * 5) + (ge * 7)
-        gain_an_net = gain_an_brut - (maint * nb)
+        gain_an_net = gain_an_brut - (saas * nb)
         k_sauves_an = (kh * 5) + (ke * 7)
         pct = (gain_an_brut / f_ref_an * 100) if f_ref_an > 0 else 0
         
@@ -318,9 +317,9 @@ else:
         col1, col2, col3, col4 = st.columns(4)
         
         with col1:
-            st.metric(label="Facture de Référence", value=f"{f_ref_an:,.0f} €", delta=f"{k_ref_an:,.0f} kWh", delta_color="off")
+            st.metric(label="Facture de Référence (HT)", value=f"{f_ref_an:,.0f} €", delta=f"{k_ref_an:,.0f} kWh", delta_color="off")
         with col2:
-            st.metric(label="Gain Net d'Exploitation", value=f"{gain_an_net:,.0f} € / an", delta=f"-{pct:.1f} % (Brut)")
+            st.metric(label="Gain Net d'Exploitation (HT)", value=f"{gain_an_net:,.0f} € / an", delta=f"-{pct:.1f} % (Brut)")
         with col3:
             st.metric(label="Impact Environnemental", value=f"{(k_sauves_an*0.05)/1000:,.1f} t", delta="CO2 Évité")
         with col4:
@@ -331,7 +330,7 @@ else:
         st.write(f"- **Nombre de chambres équipées :** {nb}")
         st.write(f"- **Temps de délestage journalier :** {h} heures")
         st.write(f"- **Taux de rattrapage thermique :** {r*100:.0f} % (avec marge de sécurité de {sec*100:.0f} %)")
-        st.write(f"- **Coût de maintenance provisionné :** {maint*nb:.0f} € / an")
+        st.write(f"- **Coût Abonnement SaaS :** {saas*nb:.0f} € / an")
 
     with tab_details:
         df_daily, df_weekly = generate_detailed_dataframes(df_proc)
@@ -362,14 +361,14 @@ else:
             t_ap = (k_hp_sim + k_hc_sim) * s.get('tarif_turpe', 0)
             tax_ap = (k_hp_sim + k_hc_sim) * s.get('tarif_taxes', 0)
             
-            tot_ttc_ap = (f_hp_ap + f_hc_ap + t_ap + tax_ap) * 1.20 - (abo * nb)
+            tot_ht_ap = (f_hp_ap + f_hc_ap + t_ap + tax_ap) - (abo * nb)
             
-            b_av = [s.get('f_hc', 0)*nb, s.get('f_hp', 0)*nb, s.get('turpe', 0)*nb, s.get('taxes', 0)*nb, s.get('tva', 0)*nb]
-            b_ap = [f_hc_ap, f_hp_ap, t_ap, tax_ap, max(0, tot_ttc_ap - (tot_ttc_ap/1.2))]
+            b_av = [s.get('f_hc', 0)*nb, s.get('f_hp', 0)*nb, s.get('turpe', 0)*nb, s.get('taxes', 0)*nb]
+            b_ap = [f_hc_ap, f_hp_ap, t_ap, tax_ap]
             
-            clrs = ['#3498db', '#fd7e14', '#95a5a6', '#adb5bd', '#198754']
+            clrs = ['#3498db', '#fd7e14', '#95a5a6', '#adb5bd']
             c_av, c_ap = 0, 0
-            for i in range(5):
+            for i in range(4):
                 ax.bar('Actuel', b_av[i], bottom=c_av, color=clrs[i], width=0.5)
                 ax.bar('Altileo', b_ap[i], bottom=c_ap, color=clrs[i], width=0.5)
                 if b_av[i]>15: ax.text(0, c_av+b_av[i]/2, f"{b_av[i]:.0f}€", ha='center', color='w', fontweight='bold', fontsize=9)
@@ -377,7 +376,7 @@ else:
                 c_av += b_av[i]
                 c_ap += b_ap[i]
                 
-            ax.set_title(f"Saison {title} (TTC)", pad=20, fontweight="bold")
+            ax.set_title(f"Saison {title} (HT)", pad=20, fontweight="bold")
             ax.set_ylabel("Euros")
             
             g = c_av - c_ap
