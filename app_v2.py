@@ -434,7 +434,7 @@ with st.sidebar:
     cop = st.slider("Bonus COP nuit (%)", 0, 50, 5, 1) / 100.0
 
     abo = st.number_input("Gain abonnement kVA (EUR/mois/ch)", value=0.0)
-    saas = st.number_input("Abonnement SaaS (EUR/an/ch)", value=360.0)
+    saas = st.number_input("Abonnement SaaS (EUR/an/ch)", value=240.0)
 
     st.divider()
 
