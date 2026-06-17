@@ -743,7 +743,7 @@ with tab_dashboard:
             fig_e.savefig(img_e, format='png', bbox_inches='tight')
             pdf.image(img_e, x=110, y=pdf.get_y(), w=90)
             
-            return pdf.output(dest="S").encode("latin-1")
+            return bytes(pdf.output())
             
         pdf_bytes = create_pdf()
         st.download_button(
