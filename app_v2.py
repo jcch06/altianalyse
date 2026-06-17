@@ -4,6 +4,8 @@ import pandas as pd
 import streamlit as st
 import plotly.graph_objects as go
 import httpx
+import io
+from fpdf import FPDF
 from datetime import datetime, date, timedelta
 from supabase import create_client, Client
 
@@ -550,6 +552,83 @@ if analysis_run:
             i_net = max(0, pr * nb - cee)
             roi = (i_net / gain_an_net * 12) if gain_an_net > 0 else 0
 
+            # --- Generation des graphiques (en memoire) ---
+            CHART_COLORS = ['#1B3A5C', '#2D8C5A', '#8DA0B3', '#C5CED6']
+            CHART_LABELS = ['HC', 'HP', 'TURPE', 'Taxes']
+
+            def draw_chart(s, title):
+                fig, ax = plt.subplots(figsize=(6, 5))
+                if not s:
+                    ax.axis('off')
+                    return fig
+
+                k_hp_base = s.get('kwh_mois_hp', 0) * nb
+                k_hc_base = s.get('kwh_mois_hc', 0) * nb
+                k_eff = k_hp_base * (h / 16.0)
+                k_rat = k_eff * r * (1.0 - cop) * (1.0 + sec)
+
+                k_hp_sim = k_hp_base - k_eff
+                k_hc_sim = k_hc_base + k_rat
+
+                f_hp_ap = k_hp_sim * s.get('tarif_hp', 0)
+                f_hc_ap = k_hc_sim * s.get('tarif_hc', 0)
+                t_ap = (k_hp_sim + k_hc_sim) * s.get('tarif_turpe', 0)
+                tax_ap = (k_hp_sim + k_hc_sim) * s.get('tarif_taxes', 0)
+
+                b_av = [
+                    s.get('f_hc', 0) * nb,
+                    s.get('f_hp', 0) * nb,
+                    s.get('turpe', 0) * nb,
+                    s.get('taxes', 0) * nb
+                ]
+                b_ap = [f_hc_ap, f_hp_ap, t_ap, tax_ap]
+
+                c_av, c_ap = 0, 0
+                for i in range(4):
+                    ax.bar('Actuel', b_av[i], bottom=c_av, color=CHART_COLORS[i], width=0.45)
+                    ax.bar('Altileo', b_ap[i], bottom=c_ap, color=CHART_COLORS[i], width=0.45)
+                    if b_av[i] > 15:
+                        ax.text(0, c_av + b_av[i] / 2, f"{b_av[i]:.0f} EUR",
+                                ha='center', color='w', fontweight='bold', fontsize=8)
+                    if b_ap[i] > 15:
+                        ax.text(1, c_ap + b_ap[i] / 2, f"{b_ap[i]:.0f} EUR",
+                                ha='center', color='w', fontweight='bold', fontsize=8)
+                    c_av += b_av[i]
+                    c_ap += b_ap[i]
+
+                ax.set_title(f"Saison {title} (HT)", pad=20, fontweight="bold", fontsize=11, color='#1a1a2e')
+                ax.set_ylabel("Euros / mois", fontsize=9, color='#7a8a9a')
+
+                # Annotation gain
+                g = c_av - c_ap
+                if g > 0:
+                    ax.annotate(
+                        f"-{g:.0f} EUR\n(-{g / c_av * 100:.1f} %)",
+                        xy=(1, c_ap), xytext=(0, c_av),
+                        arrowprops=dict(arrowstyle="->", color="#1B3A5C", lw=1.8),
+                        color="#1B3A5C", fontweight="bold", ha='center', fontsize=9,
+                        bbox=dict(boxstyle="round,pad=0.3", fc="#ffffff", ec="#1B3A5C", lw=1)
+                    )
+
+                # Legende
+                legend_handles = [Patch(facecolor=c, label=l) for c, l in zip(CHART_COLORS, CHART_LABELS)]
+                ax.legend(
+                    handles=legend_handles, loc='upper right', fontsize=8,
+                    framealpha=0.95, edgecolor='#e2e6ec'
+                )
+
+                ax.spines['top'].set_visible(False)
+                ax.spines['right'].set_visible(False)
+                ax.spines['left'].set_color('#e2e6ec')
+                ax.spines['bottom'].set_color('#e2e6ec')
+                ax.tick_params(colors='#7a8a9a')
+                fig.tight_layout()
+
+                return fig
+
+            fig_h = draw_chart(s_h, "HIVER")
+            fig_e = draw_chart(s_e, "ETE")
+
 # ============================================================
 # 10. ONGLETS
 # ============================================================
@@ -570,32 +649,39 @@ with tab_dashboard:
     else:
         st.markdown('<p class="section-title">Synthese annuelle du projet</p>', unsafe_allow_html=True)
 
-        col1, col2, col3, col4 = st.columns(4)
+        col1, col2, col3, col4, col5 = st.columns(5)
         with col1:
             st.metric(
-                label="Facture de reference (HT)",
+                label="Facture de reference",
                 value=f"{f_ref_an:,.0f} EUR",
                 delta=f"{k_ref_an:,.0f} kWh",
                 delta_color="off"
             )
         with col2:
             st.metric(
-                label="Gain net d'exploitation (HT)",
-                value=f"{gain_an_net:,.0f} EUR / an",
-                delta=f"-{pct:.1f} % (brut)"
+                label="Gain Brut d'exploit.",
+                value=f"{gain_an_brut:,.0f} EUR",
+                delta="Avant abo SaaS",
+                delta_color="off"
             )
         with col3:
+            st.metric(
+                label="Gain Net d'exploit.",
+                value=f"{gain_an_net:,.0f} EUR",
+                delta=f"-{pct:.1f} % (brut)"
+            )
+        with col4:
             st.metric(
                 label="Impact environnemental",
                 value=f"{(k_sauves_an * 0.05) / 1000:,.1f} t",
                 delta="CO2 evite"
             )
-        with col4:
+        with col5:
             st.metric(
-                label="Retour sur investissement",
+                label="Retour investissement",
                 value=f"{roi:.1f} mois",
-                delta=f"CAPEX net : {i_net:,.0f} EUR",
-                delta_color="inverse"
+                delta=f"soit {roi/12:.1f} ans",
+                delta_color="off"
             )
 
         st.divider()
@@ -608,6 +694,65 @@ with tab_dashboard:
         with param_col2:
             st.markdown(f"**Rattrapage thermique :** {r * 100:.0f} % (marge securite {sec * 100:.0f} %)")
             st.markdown(f"**Abonnement SaaS :** {saas * nb:.0f} EUR / an")
+
+        st.divider()
+        
+        # --- Export PDF ---
+        def create_pdf():
+            pdf = FPDF()
+            pdf.add_page()
+            pdf.set_font("Arial", "B", 16)
+            pdf.set_text_color(27, 58, 92)
+            pdf.cell(0, 10, "Rapport d'Audit Energetique Altileo", ln=1, align="C")
+            
+            pdf.set_font("Arial", "", 11)
+            pdf.set_text_color(0, 0, 0)
+            pdf.ln(5)
+            pdf.cell(0, 6, f"Date de l'audit : {date.today().strftime('%d/%m/%Y')}", ln=1)
+            try:
+                pdf.cell(0, 6, f"Periode analysee : du {d_start.strftime('%d/%m/%Y')} au {d_end.strftime('%d/%m/%Y')}", ln=1)
+            except:
+                pdf.cell(0, 6, f"Periode analysee : du {d_start} au {d_end}", ln=1)
+            pdf.cell(0, 6, f"Nombre de chambres equipees : {nb}", ln=1)
+            pdf.cell(0, 6, f"Delestage programme : {h} heures/jour", ln=1)
+            
+            pdf.ln(5)
+            pdf.set_font("Arial", "B", 14)
+            pdf.set_text_color(27, 58, 92)
+            pdf.cell(0, 10, "Resultats Financiers (HT)", ln=1)
+            
+            pdf.set_font("Arial", "", 11)
+            pdf.set_text_color(0, 0, 0)
+            pdf.cell(0, 6, f"Facture de reference : {f_ref_an:,.0f} EUR/an", ln=1)
+            pdf.cell(0, 6, f"Gain d'exploitation brut : {gain_an_brut:,.0f} EUR/an", ln=1)
+            pdf.cell(0, 6, f"Abonnement SaaS : {saas * nb:,.0f} EUR/an", ln=1)
+            pdf.cell(0, 6, f"Gain d'exploitation NET : {gain_an_net:,.0f} EUR/an", ln=1)
+            pdf.cell(0, 6, f"Retour sur investissement (ROI) : {roi:.1f} mois (soit {roi/12:.1f} ans)", ln=1)
+            pdf.cell(0, 6, f"Impact carbone : {(k_sauves_an * 0.05) / 1000:,.1f} tonnes de CO2 evitees/an", ln=1)
+            
+            pdf.ln(10)
+            pdf.set_font("Arial", "B", 14)
+            pdf.set_text_color(27, 58, 92)
+            pdf.cell(0, 10, "Modelisation Mensuelle", ln=1)
+            
+            img_h = io.BytesIO()
+            fig_h.savefig(img_h, format='png', bbox_inches='tight')
+            pdf.image(img_h, x=10, y=pdf.get_y(), w=90)
+            
+            img_e = io.BytesIO()
+            fig_e.savefig(img_e, format='png', bbox_inches='tight')
+            pdf.image(img_e, x=110, y=pdf.get_y(), w=90)
+            
+            return pdf.output(dest="S").encode("latin-1")
+            
+        pdf_bytes = create_pdf()
+        st.download_button(
+            label="📄 Telecharger le rapport PDF",
+            data=pdf_bytes,
+            file_name=f"Altileo_Audit_{date.today().strftime('%Y%m%d')}.pdf",
+            mime="application/pdf",
+            type="primary"
+        )
 
 # ----------------------------------------------------------
 # ONGLET 2 : AUDIT DETAILLE
@@ -633,84 +778,11 @@ with tab_charts:
     else:
         st.markdown('<p class="section-title">Comparaison mensuelle : Actuel vs Altileo (HT)</p>', unsafe_allow_html=True)
 
-        CHART_COLORS = ['#1B3A5C', '#2D8C5A', '#8DA0B3', '#C5CED6']
-        CHART_LABELS = ['HC', 'HP', 'TURPE', 'Taxes']
-
-        def draw_chart(s, title):
-            fig, ax = plt.subplots(figsize=(6, 5))
-            if not s:
-                ax.axis('off')
-                return fig
-
-            k_hp_base = s.get('kwh_mois_hp', 0) * nb
-            k_hc_base = s.get('kwh_mois_hc', 0) * nb
-            k_eff = k_hp_base * (h / 16.0)
-            k_rat = k_eff * r * (1.0 - cop) * (1.0 + sec)
-
-            k_hp_sim = k_hp_base - k_eff
-            k_hc_sim = k_hc_base + k_rat
-
-            f_hp_ap = k_hp_sim * s.get('tarif_hp', 0)
-            f_hc_ap = k_hc_sim * s.get('tarif_hc', 0)
-            t_ap = (k_hp_sim + k_hc_sim) * s.get('tarif_turpe', 0)
-            tax_ap = (k_hp_sim + k_hc_sim) * s.get('tarif_taxes', 0)
-
-            b_av = [
-                s.get('f_hc', 0) * nb,
-                s.get('f_hp', 0) * nb,
-                s.get('turpe', 0) * nb,
-                s.get('taxes', 0) * nb
-            ]
-            b_ap = [f_hc_ap, f_hp_ap, t_ap, tax_ap]
-
-            c_av, c_ap = 0, 0
-            for i in range(4):
-                ax.bar('Actuel', b_av[i], bottom=c_av, color=CHART_COLORS[i], width=0.45)
-                ax.bar('Altileo', b_ap[i], bottom=c_ap, color=CHART_COLORS[i], width=0.45)
-                if b_av[i] > 15:
-                    ax.text(0, c_av + b_av[i] / 2, f"{b_av[i]:.0f} EUR",
-                            ha='center', color='w', fontweight='bold', fontsize=8)
-                if b_ap[i] > 15:
-                    ax.text(1, c_ap + b_ap[i] / 2, f"{b_ap[i]:.0f} EUR",
-                            ha='center', color='w', fontweight='bold', fontsize=8)
-                c_av += b_av[i]
-                c_ap += b_ap[i]
-
-            ax.set_title(f"Saison {title} (HT)", pad=20, fontweight="bold", fontsize=11, color='#1a1a2e')
-            ax.set_ylabel("Euros / mois", fontsize=9, color='#7a8a9a')
-
-            # Annotation gain
-            g = c_av - c_ap
-            if g > 0:
-                ax.annotate(
-                    f"-{g:.0f} EUR\n(-{g / c_av * 100:.1f} %)",
-                    xy=(1, c_ap), xytext=(0, c_av),
-                    arrowprops=dict(arrowstyle="->", color="#1B3A5C", lw=1.8),
-                    color="#1B3A5C", fontweight="bold", ha='center', fontsize=9,
-                    bbox=dict(boxstyle="round,pad=0.3", fc="#ffffff", ec="#1B3A5C", lw=1)
-                )
-
-            # Legende
-            legend_handles = [Patch(facecolor=c, label=l) for c, l in zip(CHART_COLORS, CHART_LABELS)]
-            ax.legend(
-                handles=legend_handles, loc='upper right', fontsize=8,
-                framealpha=0.95, edgecolor='#e2e6ec'
-            )
-
-            ax.spines['top'].set_visible(False)
-            ax.spines['right'].set_visible(False)
-            ax.spines['left'].set_color('#e2e6ec')
-            ax.spines['bottom'].set_color('#e2e6ec')
-            ax.tick_params(colors='#7a8a9a')
-            fig.tight_layout()
-
-            return fig
-
         col_chart1, col_chart2 = st.columns(2)
         with col_chart1:
-            st.pyplot(draw_chart(s_h, "HIVER"), use_container_width=True)
+            st.pyplot(fig_h, use_container_width=True)
         with col_chart2:
-            st.pyplot(draw_chart(s_e, "ETE"), use_container_width=True)
+            st.pyplot(fig_e, use_container_width=True)
 
 # ----------------------------------------------------------
 # ONGLET 4 : MONITORING CAPTEURS
