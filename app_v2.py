@@ -153,6 +153,35 @@ def fetch_available_sensors(table_name: str) -> list:
     except Exception:
         return []
 
+@st.cache_data(ttl=300, show_spinner=False)
+def fetch_table_date_range(table_name: str) -> tuple:
+    """Detecte la premiere et la derniere date disponibles dans la table."""
+    default_start = date(2025, 11, 1)
+    default_end = date(2026, 3, 31)
+    if not SUPABASE_URL or not SUPABASE_KEY:
+        return default_start, default_end
+    try:
+        supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+        resp_min = supabase.table(table_name).select('timestamp').order('timestamp', desc=False).limit(1).execute()
+        resp_max = supabase.table(table_name).select('timestamp').order('timestamp', desc=True).limit(1).execute()
+        
+        d_min, d_max = default_start, default_end
+        if resp_min.data and 'timestamp' in resp_min.data[0]:
+            try:
+                d_min = pd.to_datetime(resp_min.data[0]['timestamp']).date()
+            except Exception:
+                pass
+                
+        if resp_max.data and 'timestamp' in resp_max.data[0]:
+            try:
+                d_max = pd.to_datetime(resp_max.data[0]['timestamp']).date()
+            except Exception:
+                pass
+                
+        return d_min, d_max
+    except Exception:
+        return default_start, default_end
+
 # ============================================================
 # 5. FONCTIONS : DONNEES ANALYSE (Logique Metier)
 # ============================================================
@@ -406,11 +435,12 @@ with st.sidebar:
 
     # --- Periode d'analyse ---
     st.markdown("### Periode d'analyse")
+    min_date, max_date = fetch_table_date_range(t_name)
     col_d1, col_d2 = st.columns(2)
     with col_d1:
-        d_start = st.date_input("Debut", date(2025, 11, 1))
+        d_start = st.date_input("Debut", min_date)
     with col_d2:
-        d_end = st.date_input("Fin", date(2026, 3, 31))
+        d_end = st.date_input("Fin", max_date)
 
     # --- Tarifs ---
     with st.expander("Parametres physiques et tarifs"):
