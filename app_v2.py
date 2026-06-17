@@ -96,16 +96,16 @@ st.markdown("""
         box-shadow: 0 1px 3px rgba(0,0,0,0.03);
     }
 
-    div[data-testid="stMetric"] label {
-        font-size: 0.65rem !important;
+    div[data-testid="stMetricLabel"] {
+        font-size: 0.8rem !important;
         text-transform: uppercase;
-        letter-spacing: 0.8px;
-        color: #7a8a9a !important;
+        letter-spacing: 0.5px;
+        color: #1a1a2e !important;
         font-weight: 600 !important;
     }
 
-    div[data-testid="stMetric"] [data-testid="stMetricValue"] {
-        font-size: 1.3rem !important;
+    div[data-testid="stMetricValue"] {
+        font-size: 1.5rem !important;
         font-weight: 700 !important;
         color: #1a1a2e !important;
     }
