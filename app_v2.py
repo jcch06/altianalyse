@@ -429,8 +429,8 @@ with st.sidebar:
     # --- Modelisation ---
     st.markdown("### Modelisation Altileo")
     h = st.slider("Delestage HP (heures)", 0.0, 16.0, 8.0, 0.5)
-    r = st.slider("Rattrapage HC (%)", 0, 100, 20, 1) / 100.0
-    sec = st.slider("Marge de securite (%)", 0, 50, 15, 1) / 100.0
+    r = st.slider("Rattrapage HC (%)", 0, 100, 5, 1) / 100.0
+    sec = st.slider("Marge de securite (%)", 0, 50, 5, 1) / 100.0
     cop = st.slider("Bonus COP nuit (%)", 0, 50, 5, 1) / 100.0
 
     abo = st.number_input("Gain abonnement kVA (EUR/mois/ch)", value=0.0)
