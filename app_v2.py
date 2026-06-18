@@ -1041,27 +1041,33 @@ with tab_spot:
         })
 
         # --- Simulation financiere Spot ---
-        # Profil horaire de consommation (compresseur seul = delestable)
-        df_comp_spot = df_proc[df_proc['categorie_conso'] == 'compresseur'].copy()
-        df_other_spot = df_proc[df_proc['categorie_conso'] != 'compresseur'].copy()
+        # Utiliser la meme base d'energie que le modele HC/HP
+        df_spot_calc = df_proc.copy()
+        df_spot_calc['heure'] = df_spot_calc['timestamp'].dt.hour
 
-        df_comp_spot['heure'] = df_comp_spot['timestamp'].dt.hour
-        df_other_spot['heure'] = df_other_spot['timestamp'].dt.hour
+        # Energie horaire totale (meme methode que calculate_period_summary)
+        all_hourly = df_spot_calc.groupby('heure')['puissance_kw'].mean().reindex(range(24), fill_value=0)
 
-        comp_hourly = df_comp_spot.groupby('heure')['puissance_kw'].mean().reindex(range(24), fill_value=0)
-        other_hourly = df_other_spot.groupby('heure')['puissance_kw'].mean().reindex(range(24), fill_value=0)
+        # Proportion compresseur par heure (pour savoir quoi delester)
+        comp_hourly_raw = df_spot_calc[df_spot_calc['categorie_conso'] == 'compresseur']\
+            .groupby('heure')['puissance_kw'].mean().reindex(range(24), fill_value=0)
+        other_hourly_raw = df_spot_calc[df_spot_calc['categorie_conso'] != 'compresseur']\
+            .groupby('heure')['puissance_kw'].mean().reindex(range(24), fill_value=0)
+        total_raw = comp_hourly_raw + other_hourly_raw
+        comp_ratio = (comp_hourly_raw / total_raw).fillna(0)
 
         # Prix total par kWh a chaque heure (spot + marge + TURPE + taxes)
         total_price_kwh = [(p + spot_margin) / 1000.0 + tarifs['turpe'] + tarifs['taxes'] for p in spot_prices]
 
         # Scenario A : Spot SANS Altileo (consommation inchangee)
         cost_spot_daily = sum(
-            (comp_hourly[h] + other_hourly[h]) * total_price_kwh[h]
+            all_hourly[h] * total_price_kwh[h]
             for h in range(24)
         )
 
         # Scenario B : Spot AVEC Altileo (delestage sur heures selectionnees)
-        energy_removed = sum(comp_hourly[h] for h in selected_hours)
+        # L'energie compresseur retiree (proportionnelle)
+        energy_removed = sum(all_hourly[h] * comp_ratio[h] for h in selected_hours)
         energy_rattrapage = energy_removed * r * (1.0 - cop) * (1.0 + sec)
 
         available_hours = [h for h in range(24) if h not in selected_hours]
@@ -1070,12 +1076,12 @@ with tab_spot:
         cost_spot_altileo_daily = 0
         for h in range(24):
             if h in selected_hours:
-                # Compresseur eteint, seules les autres charges tournent
-                cost_spot_altileo_daily += other_hourly[h] * total_price_kwh[h]
+                # Compresseur eteint : seule la part non-compresseur reste
+                energy_h = all_hourly[h] * (1 - comp_ratio[h])
             else:
-                # Compresseur normal + part de rattrapage
-                energy_h = comp_hourly[h] + other_hourly[h] + rattrapage_per_hour
-                cost_spot_altileo_daily += energy_h * total_price_kwh[h]
+                # Consommation normale + part de rattrapage
+                energy_h = all_hourly[h] + rattrapage_per_hour
+            cost_spot_altileo_daily += energy_h * total_price_kwh[h]
 
         # Annualisation (x30 jours x12 mois x nb chambres)
         cost_spot_annual = cost_spot_daily * 30 * 12 * nb
@@ -1186,11 +1192,11 @@ with tab_spot:
             detail_data = []
             for h in range(24):
                 is_delest = h in selected_hours
-                energy_base = comp_hourly[h] + other_hourly[h]
+                energy_base = all_hourly[h]
                 if is_delest:
-                    energy_after = other_hourly[h]
+                    energy_after = all_hourly[h] * (1 - comp_ratio[h])
                 else:
-                    energy_after = comp_hourly[h] + other_hourly[h] + rattrapage_per_hour
+                    energy_after = all_hourly[h] + rattrapage_per_hour
                 cost_before = energy_base * total_price_kwh[h]
                 cost_after = energy_after * total_price_kwh[h]
 
