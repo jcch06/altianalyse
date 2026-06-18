@@ -973,19 +973,27 @@ with tab_spot:
         hours_by_price = sorted(range(24), key=lambda x: spot_prices[x], reverse=True)
         default_delest = sorted(hours_by_price[:5])
 
-        # --- Selection interactive des heures ---
-        st.markdown("**Selectionnez les heures a delester** (cliquez pour ajouter/retirer) :")
-        all_hours_labels = [f"{h:02d}h" for h in range(24)]
-        default_labels = [f"{h:02d}h" for h in default_delest]
+        # Initialiser les checkboxes au premier lancement
+        if 'spot_init_done' not in st.session_state:
+            st.session_state.spot_init_done = True
+            for hh in range(24):
+                st.session_state[f'spot_h_{hh}'] = (hh in default_delest)
 
-        selected_labels = st.multiselect(
-            "Heures delestees",
-            all_hours_labels,
-            default=default_labels,
-            key="spot_hours_select",
-            label_visibility="collapsed"
-        )
-        selected_hours = sorted([int(lbl.replace("h", "")) for lbl in selected_labels])
+        # --- Grille cliquable : 2 rangees de 12 heures ---
+        st.markdown("**Cliquez sur une heure pour la delester / reactiver :**")
+
+        cols_row1 = st.columns(12)
+        for i in range(12):
+            with cols_row1[i]:
+                st.checkbox(f"{i:02d}h", key=f'spot_h_{i}')
+
+        cols_row2 = st.columns(12)
+        for i in range(12):
+            hh = i + 12
+            with cols_row2[i]:
+                st.checkbox(f"{hh:02d}h", key=f'spot_h_{hh}')
+
+        selected_hours = sorted([hh for hh in range(24) if st.session_state.get(f'spot_h_{hh}', False)])
         nb_heures_delest = len(selected_hours)
 
         # --- Graphique Plotly : profil spot avec heures delestees ---
