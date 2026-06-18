@@ -30,44 +30,40 @@ st.markdown("""<link href="https://fonts.googleapis.com/css2?family=Inter:wght@3
 <style>
 /* ========== Global ========== */
 html, body, [class*="css"] { font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; }
-.stApp { background-color: #f4f6f9; }
 /* ========== Sidebar ========== */
-section[data-testid="stSidebar"] { background-color: #ffffff; border-right: 1px solid #dfe3e8; }
-section[data-testid="stSidebar"] [data-testid="stMarkdownContainer"] h3 { font-size: 0.65rem !important; text-transform: uppercase; letter-spacing: 2px; color: #8898a8 !important; font-weight: 600 !important; margin-top: 0.6rem !important; margin-bottom: 0.4rem !important; padding-bottom: 0.3rem; border-bottom: 1px solid #eef1f5; }
-section[data-testid="stSidebar"] [data-testid="stMarkdownContainer"] h2 { font-size: 0.85rem !important; font-weight: 600 !important; color: #1B3A5C !important; letter-spacing: 0.3px; margin-bottom: 0.5rem !important; }
+section[data-testid="stSidebar"] [data-testid="stMarkdownContainer"] h3 { font-size: 0.65rem !important; text-transform: uppercase; letter-spacing: 2px; color: var(--text-color) !important; font-weight: 600 !important; margin-top: 0.6rem !important; margin-bottom: 0.4rem !important; padding-bottom: 0.3rem; border-bottom: 1px solid var(--secondary-background-color); opacity: 0.7; }
+section[data-testid="stSidebar"] [data-testid="stMarkdownContainer"] h2 { font-size: 0.85rem !important; font-weight: 600 !important; color: var(--text-color) !important; letter-spacing: 0.3px; margin-bottom: 0.5rem !important; }
 /* ========== Header banner ========== */
 .app-header { background: linear-gradient(135deg, #1B3A5C 0%, #264d73 60%, #1B3A5C 100%); padding: 1.6rem 2rem; border-radius: 6px; margin-bottom: 1.2rem; }
 .app-header h1 { font-size: 1.5rem; font-weight: 700; color: #ffffff; letter-spacing: 3px; margin: 0; }
 .app-header p { font-size: 0.8rem; color: #a3bdd4; margin: 0.3rem 0 0 0; font-weight: 400; letter-spacing: 0.4px; }
 /* ========== KPI Metrics ========== */
-div[data-testid="stMetric"] { background-color: #ffffff; padding: 1rem 1.2rem; border-radius: 6px; border: 1px solid #e2e6ec; border-left: 4px solid #1B3A5C; box-shadow: 0 1px 3px rgba(0,0,0,0.03); }
-div[data-testid="stMetricLabel"] { font-size: 0.8rem !important; text-transform: uppercase; letter-spacing: 0.5px; color: #7a8a9a !important; font-weight: 600 !important; }
-div[data-testid="stMetricValue"] { font-size: 1.5rem !important; font-weight: 700 !important; color: #1a1a2e !important; }
+div[data-testid="stMetric"] { background-color: var(--secondary-background-color); padding: 1rem 1.2rem; border-radius: 6px; border: 1px solid var(--background-color); border-left: 4px solid #2D8C5A; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+div[data-testid="stMetricLabel"] { font-size: 0.8rem !important; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-color) !important; font-weight: 600 !important; opacity: 0.8; }
+div[data-testid="stMetricValue"] { font-size: 1.5rem !important; font-weight: 700 !important; color: var(--text-color) !important; }
 /* ========== Tabs ========== */
-.stTabs [data-baseweb="tab-list"] { gap: 0; border-bottom: 2px solid #e2e6ec; background-color: transparent; }
-.stTabs [data-baseweb="tab"] { font-family: 'Inter', sans-serif; font-weight: 500; font-size: 0.78rem; letter-spacing: 0.2px; padding: 0.7rem 1.4rem; color: #7a8a9a; border-bottom: 2px solid transparent; margin-bottom: -2px; background-color: transparent !important; }
-.stTabs [aria-selected="true"] { color: #1B3A5C !important; border-bottom-color: #1B3A5C !important; font-weight: 600; background-color: transparent !important; }
-/* ========== Primary Button ========== */
-button[data-testid="stBaseButton-primary"] { background-color: #1B3A5C !important; border: none !important; font-family: 'Inter', sans-serif !important; font-weight: 600 !important; font-size: 0.78rem !important; letter-spacing: 0.4px !important; border-radius: 5px !important; color: #ffffff !important; }
-button[data-testid="stBaseButton-primary"]:hover { background-color: #264d73 !important; }
-/* ========== Secondary Button ========== */
-button[data-testid="stBaseButton-secondary"] { font-family: 'Inter', sans-serif !important; font-weight: 500 !important; font-size: 0.75rem !important; border-radius: 5px !important; border-color: #c5ced8 !important; color: #1B3A5C !important; }
+.stTabs [data-baseweb="tab-list"] { gap: 0; border-bottom: 2px solid var(--secondary-background-color); background-color: transparent; }
+.stTabs [data-baseweb="tab"] { font-family: 'Inter', sans-serif; font-weight: 500; font-size: 0.78rem; letter-spacing: 0.2px; padding: 0.7rem 1.4rem; color: var(--text-color); border-bottom: 2px solid transparent; margin-bottom: -2px; background-color: transparent !important; opacity: 0.7; }
+.stTabs [aria-selected="true"] { color: #2D8C5A !important; border-bottom-color: #2D8C5A !important; font-weight: 600; opacity: 1; }
+/* ========== Buttons ========== */
+button[data-testid="stBaseButton-primary"] { font-family: 'Inter', sans-serif !important; font-weight: 600 !important; font-size: 0.78rem !important; letter-spacing: 0.4px !important; border-radius: 5px !important; }
+button[data-testid="stBaseButton-secondary"] { font-family: 'Inter', sans-serif !important; font-weight: 500 !important; font-size: 0.75rem !important; border-radius: 5px !important; }
 /* ========== Dataframes ========== */
-[data-testid="stDataFrame"] { border: 1px solid #e2e6ec; border-radius: 5px; overflow: hidden; }
+[data-testid="stDataFrame"] { border: 1px solid var(--secondary-background-color); border-radius: 5px; overflow: hidden; }
 /* ========== Alert / Info boxes ========== */
 .stAlert { border-radius: 5px; font-size: 0.83rem; }
 /* ========== Dividers ========== */
-hr { border-color: #eef1f5 !important; }
+hr { border-color: var(--secondary-background-color) !important; }
 /* ========== Expander ========== */
-[data-testid="stExpander"] details summary p { font-weight: 500 !important; font-size: 0.82rem !important; color: #1a1a2e; }
+[data-testid="stExpander"] details summary p { font-weight: 500 !important; font-size: 0.82rem !important; color: var(--text-color); }
 /* ========== Plotly toolbar cleanup ========== */
 .modebar-group { background-color: transparent !important; }
 /* ========== Section titles in main area ========== */
-.section-title { font-size: 0.95rem; font-weight: 600; color: #1a1a2e; margin: 1rem 0 0.8rem 0; padding-bottom: 0.4rem; border-bottom: 1px solid #e2e6ec; }
+.section-title { font-size: 0.95rem; font-weight: 600; color: var(--text-color); margin: 1rem 0 0.8rem 0; padding-bottom: 0.4rem; border-bottom: 1px solid var(--secondary-background-color); }
 /* ========== Stat card for monitoring ========== */
-.stat-card { background-color: #ffffff; border: 1px solid #e2e6ec; border-radius: 6px; padding: 0.8rem 1rem; text-align: center; }
-.stat-card .stat-label { font-size: 0.6rem; text-transform: uppercase; letter-spacing: 1px; color: #8898a8; font-weight: 600; }
-.stat-card .stat-value { font-size: 1.1rem; font-weight: 700; color: #1a1a2e; margin-top: 0.2rem; }
+.stat-card { background-color: var(--secondary-background-color); border: 1px solid var(--background-color); border-radius: 6px; padding: 0.8rem 1rem; text-align: center; }
+.stat-card .stat-label { font-size: 0.6rem; text-transform: uppercase; letter-spacing: 1px; color: var(--text-color); font-weight: 600; opacity: 0.7; }
+.stat-card .stat-value { font-size: 1.1rem; font-weight: 700; color: var(--text-color); margin-top: 0.2rem; }
 /* Hide Streamlit branding */
 #MainMenu {visibility: hidden;}
 footer {visibility: hidden;}
@@ -80,8 +76,12 @@ plt.rcParams.update({
     'font.size': 10,
     'axes.titleweight': 'bold',
     'axes.labelsize': 10,
-    'figure.facecolor': '#ffffff',
-    'axes.facecolor': '#ffffff',
+    'figure.facecolor': 'none',
+    'axes.facecolor': 'none',
+    'text.color': '#8DA0B3',
+    'axes.labelcolor': '#8DA0B3',
+    'xtick.color': '#8DA0B3',
+    'ytick.color': '#8DA0B3',
 })
 
 # ============================================================
@@ -596,8 +596,8 @@ if analysis_run:
                     c_av += b_av[i]
                     c_ap += b_ap[i]
 
-                ax.set_title(f"Saison {title} (HT)", pad=20, fontweight="bold", fontsize=11, color='#1a1a2e')
-                ax.set_ylabel("Euros / mois", fontsize=9, color='#7a8a9a')
+                ax.set_title(f"Saison {title} (HT)", pad=20, fontweight="bold", fontsize=11, color='#8DA0B3')
+                ax.set_ylabel("Euros / mois", fontsize=9, color='#8DA0B3')
 
                 # Annotation gain
                 g = c_av - c_ap
@@ -605,23 +605,23 @@ if analysis_run:
                     ax.annotate(
                         f"-{g:.0f} EUR\n(-{g / c_av * 100:.1f} %)",
                         xy=(1, c_ap), xytext=(0, c_av),
-                        arrowprops=dict(arrowstyle="->", color="#1B3A5C", lw=1.8),
-                        color="#1B3A5C", fontweight="bold", ha='center', fontsize=9,
-                        bbox=dict(boxstyle="round,pad=0.3", fc="#ffffff", ec="#1B3A5C", lw=1)
+                        arrowprops=dict(arrowstyle="->", color="#8DA0B3", lw=1.8),
+                        color="#8DA0B3", fontweight="bold", ha='center', fontsize=9,
+                        bbox=dict(boxstyle="round,pad=0.3", fc="none", ec="#8DA0B3", lw=1)
                     )
 
                 # Legende
                 legend_handles = [Patch(facecolor=c, label=l) for c, l in zip(CHART_COLORS, CHART_LABELS)]
                 ax.legend(
                     handles=legend_handles, loc='upper right', fontsize=8,
-                    framealpha=0.95, edgecolor='#e2e6ec'
+                    framealpha=0.0, edgecolor='none', labelcolor='#8DA0B3'
                 )
 
                 ax.spines['top'].set_visible(False)
                 ax.spines['right'].set_visible(False)
-                ax.spines['left'].set_color('#e2e6ec')
-                ax.spines['bottom'].set_color('#e2e6ec')
-                ax.tick_params(colors='#7a8a9a')
+                ax.spines['left'].set_color('#8DA0B3')
+                ax.spines['bottom'].set_color('#8DA0B3')
+                ax.tick_params(colors='#8DA0B3')
                 fig.tight_layout()
 
                 return fig
@@ -888,34 +888,31 @@ with tab_monitoring:
                 ))
 
             fig.update_layout(
-                template='plotly_white',
-                height=480,
-                margin=dict(l=50, r=30, t=30, b=50),
-                font=dict(family='Inter, Arial, sans-serif', size=12, color='#1a1a2e'),
+                margin=dict(l=10, r=10, t=10, b=10),
+                hovermode="x unified",
+                plot_bgcolor='rgba(0,0,0,0)',
+                paper_bgcolor='rgba(0,0,0,0)',
+                font=dict(family="Inter, sans-serif", size=10, color='var(--text-color)'),
                 legend=dict(
-                    orientation='h',
-                    yanchor='bottom',
+                    orientation="h",
+                    yanchor="bottom",
                     y=1.02,
-                    xanchor='left',
-                    x=0,
-                    font=dict(size=11)
+                    xanchor="right",
+                    x=1
                 ),
                 xaxis=dict(
                     showgrid=True,
-                    gridcolor='#f0f2f5',
-                    gridwidth=1,
-                    rangeslider=dict(visible=True, thickness=0.04),
-                    title=''
+                    gridcolor='rgba(136, 152, 168, 0.2)',
+                    zeroline=False,
+                    showline=True,
+                    linecolor='rgba(136, 152, 168, 0.5)',
+                    rangeslider=dict(visible=True, thickness=0.04, bgcolor='rgba(0,0,0,0)'),
                 ),
                 yaxis=dict(
-                    showgrid=True,
-                    gridcolor='#f0f2f5',
                     gridwidth=1,
                     title='Valeur',
                     title_font=dict(size=11, color='#7a8a9a')
-                ),
-                hovermode='x unified',
-                plot_bgcolor='#ffffff'
+                )
             )
 
             st.plotly_chart(fig, use_container_width=True, config={
