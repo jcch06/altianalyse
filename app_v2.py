@@ -478,6 +478,13 @@ with st.sidebar:
 
     st.divider()
 
+    # --- Simulation Spot ---
+    st.markdown("### Simulation Spot")
+    spot_avg = st.number_input("Prix Spot moyen (EUR/MWh)", value=140.0, step=5.0)
+    spot_margin = st.number_input("Marge fournisseur (EUR/MWh)", value=5.0, step=1.0)
+
+    st.divider()
+
     # --- Bouton d'analyse ---
     if st.button("Lancer l'analyse", type="primary", use_container_width=True):
         st.session_state['run_analysis'] = True
@@ -633,10 +640,11 @@ if analysis_run:
 # 10. ONGLETS
 # ============================================================
 
-tab_dashboard, tab_details, tab_charts, tab_monitoring = st.tabs([
+tab_dashboard, tab_details, tab_charts, tab_spot, tab_monitoring = st.tabs([
     "Indicateurs financiers",
     "Audit detaille",
     "Modelisation graphique",
+    "Simulation Spot",
     "Monitoring capteurs"
 ])
 
@@ -939,3 +947,253 @@ with tab_monitoring:
 
             # Horodatage
             st.caption(f"Derniere actualisation : {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}")
+
+# ----------------------------------------------------------
+# ONGLET 5 : SIMULATION SPOT
+# ----------------------------------------------------------
+with tab_spot:
+    st.markdown('<p class="section-title">Simulation contrat Spot (type Sobry)</p>', unsafe_allow_html=True)
+
+    if not analysis_run:
+        st.info("Lancez d'abord l'analyse dans l'onglet Indicateurs financiers.")
+    else:
+        # --- Profil spot type (forme "dos de chameau" RTE) ---
+        # Ratios normalises : moyenne = 1.0
+        # Basé sur courbe RTE : creux solaire 12h-15h, pics matin+soir
+        SPOT_RATIOS = [
+            1.20, 1.10, 1.00, 0.80, 0.65, 0.85,   # 00h-05h
+            1.00, 1.20, 1.30, 1.35, 1.10, 0.80,   # 06h-11h
+            0.60, 0.45, 0.20, 0.45, 0.60, 0.85,   # 12h-17h
+            1.10, 1.30, 1.40, 1.35, 1.30, 1.50    # 18h-23h
+        ]
+
+        spot_prices = [ratio * spot_avg for ratio in SPOT_RATIOS]
+
+        # Heures par defaut : les 5 plus cheres
+        hours_by_price = sorted(range(24), key=lambda x: spot_prices[x], reverse=True)
+        default_delest = sorted(hours_by_price[:5])
+
+        # --- Selection interactive des heures ---
+        st.markdown("**Selectionnez les heures a delester** (cliquez pour ajouter/retirer) :")
+        all_hours_labels = [f"{h:02d}h" for h in range(24)]
+        default_labels = [f"{h:02d}h" for h in default_delest]
+
+        selected_labels = st.multiselect(
+            "Heures delestees",
+            all_hours_labels,
+            default=default_labels,
+            key="spot_hours_select",
+            label_visibility="collapsed"
+        )
+        selected_hours = sorted([int(lbl.replace("h", "")) for lbl in selected_labels])
+        nb_heures_delest = len(selected_hours)
+
+        # --- Graphique Plotly : profil spot avec heures delestees ---
+        bar_colors = []
+        for h in range(24):
+            if h in selected_hours:
+                bar_colors.append('#E74C3C')  # Rouge = deleste
+            else:
+                bar_colors.append('#1B3A5C')  # Bleu = normal
+
+        fig_spot = go.Figure()
+        fig_spot.add_trace(go.Bar(
+            x=[f"{h:02d}h" for h in range(24)],
+            y=spot_prices,
+            marker_color=bar_colors,
+            hovertemplate='<b>%{x}</b><br>%{y:.1f} EUR/MWh<extra></extra>'
+        ))
+
+        fig_spot.update_layout(
+            margin=dict(l=10, r=10, t=40, b=10),
+            plot_bgcolor='rgba(0,0,0,0)',
+            paper_bgcolor='rgba(0,0,0,0)',
+            font=dict(family="Inter", size=10),
+            yaxis=dict(
+                title="EUR / MWh",
+                showgrid=True,
+                gridcolor='rgba(136, 152, 168, 0.2)',
+            ),
+            xaxis=dict(
+                showgrid=False,
+                showline=True,
+                linecolor='rgba(136, 152, 168, 0.5)',
+            ),
+            title=dict(
+                text=f"Profil Spot type -- {nb_heures_delest} heures delestees (en rouge)",
+                font=dict(size=13),
+                x=0.5
+            ),
+            showlegend=False
+        )
+
+        st.plotly_chart(fig_spot, use_container_width=True, config={
+            'displaylogo': False,
+            'modeBarButtonsToRemove': ['lasso2d', 'select2d']
+        })
+
+        # --- Simulation financiere Spot ---
+        # Profil horaire de consommation (compresseur seul = delestable)
+        df_comp_spot = df_proc[df_proc['categorie_conso'] == 'compresseur'].copy()
+        df_other_spot = df_proc[df_proc['categorie_conso'] != 'compresseur'].copy()
+
+        df_comp_spot['heure'] = df_comp_spot['timestamp'].dt.hour
+        df_other_spot['heure'] = df_other_spot['timestamp'].dt.hour
+
+        comp_hourly = df_comp_spot.groupby('heure')['puissance_kw'].mean().reindex(range(24), fill_value=0)
+        other_hourly = df_other_spot.groupby('heure')['puissance_kw'].mean().reindex(range(24), fill_value=0)
+
+        # Prix total par kWh a chaque heure (spot + marge + TURPE + taxes)
+        total_price_kwh = [(p + spot_margin) / 1000.0 + tarifs['turpe'] + tarifs['taxes'] for p in spot_prices]
+
+        # Scenario A : Spot SANS Altileo (consommation inchangee)
+        cost_spot_daily = sum(
+            (comp_hourly[h] + other_hourly[h]) * total_price_kwh[h]
+            for h in range(24)
+        )
+
+        # Scenario B : Spot AVEC Altileo (delestage sur heures selectionnees)
+        energy_removed = sum(comp_hourly[h] for h in selected_hours)
+        energy_rattrapage = energy_removed * r * (1.0 - cop) * (1.0 + sec)
+
+        available_hours = [h for h in range(24) if h not in selected_hours]
+        rattrapage_per_hour = energy_rattrapage / len(available_hours) if available_hours else 0
+
+        cost_spot_altileo_daily = 0
+        for h in range(24):
+            if h in selected_hours:
+                # Compresseur eteint, seules les autres charges tournent
+                cost_spot_altileo_daily += other_hourly[h] * total_price_kwh[h]
+            else:
+                # Compresseur normal + part de rattrapage
+                energy_h = comp_hourly[h] + other_hourly[h] + rattrapage_per_hour
+                cost_spot_altileo_daily += energy_h * total_price_kwh[h]
+
+        # Annualisation (x30 jours x12 mois x nb chambres)
+        cost_spot_annual = cost_spot_daily * 30 * 12 * nb
+        cost_spot_altileo_annual = cost_spot_altileo_daily * 30 * 12 * nb
+
+        gain_spot_brut = cost_spot_annual - cost_spot_altileo_annual
+        gain_spot_net = gain_spot_brut - (saas * nb)
+        gain_vs_actuel = f_ref_an - (cost_spot_altileo_annual + saas * nb)
+
+        kwh_spot_saved_daily = energy_removed - energy_rattrapage
+        kwh_spot_saved_annual = kwh_spot_saved_daily * 30 * 12 * nb
+
+        st.divider()
+
+        # --- KPIs comparatifs ---
+        st.markdown('<p class="section-title">Comparaison des 3 scenarios (annuel HT)</p>', unsafe_allow_html=True)
+
+        kpi1, kpi2, kpi3 = st.columns(3)
+        with kpi1:
+            st.metric(
+                label="Contrat actuel (HC/HP)",
+                value=f"{f_ref_an:,.0f} EUR",
+                delta="Reference",
+                delta_color="off"
+            )
+        with kpi2:
+            delta_vs_actuel_pct = ((cost_spot_annual - f_ref_an) / f_ref_an * 100) if f_ref_an > 0 else 0
+            st.metric(
+                label="Spot SANS Altileo",
+                value=f"{cost_spot_annual:,.0f} EUR",
+                delta=f"{delta_vs_actuel_pct:+.1f} % vs actuel",
+                delta_color="inverse"
+            )
+        with kpi3:
+            delta_spot_alt_pct = ((cost_spot_altileo_annual + saas * nb - f_ref_an) / f_ref_an * 100) if f_ref_an > 0 else 0
+            st.metric(
+                label="Spot + Altileo",
+                value=f"{cost_spot_altileo_annual + saas * nb:,.0f} EUR",
+                delta=f"{delta_spot_alt_pct:+.1f} % vs actuel",
+                delta_color="inverse"
+            )
+
+        st.divider()
+
+        kpi4, kpi5, kpi6 = st.columns(3)
+        with kpi4:
+            st.metric(
+                label="Gain Altileo sur Spot",
+                value=f"{gain_spot_net:,.0f} EUR / an",
+                delta=f"Brut : {gain_spot_brut:,.0f} EUR",
+                delta_color="off"
+            )
+        with kpi5:
+            st.metric(
+                label="Gain total vs contrat actuel",
+                value=f"{gain_vs_actuel:,.0f} EUR / an",
+                delta=f"Spot + Altileo combine",
+                delta_color="off"
+            )
+        with kpi6:
+            st.metric(
+                label="kWh economises",
+                value=f"{kwh_spot_saved_annual:,.0f} kWh / an",
+                delta=f"{(kwh_spot_saved_annual * 0.05) / 1000:,.1f} t CO2",
+                delta_color="off"
+            )
+
+        # --- Graphique comparatif barres ---
+        st.divider()
+        st.markdown('<p class="section-title">Comparaison visuelle des scenarios</p>', unsafe_allow_html=True)
+
+        fig_compare = go.Figure()
+        scenarios = ["Contrat actuel\n(HC/HP)", "Spot seul\n(sans Altileo)", "Spot + Altileo"]
+        values = [f_ref_an, cost_spot_annual, cost_spot_altileo_annual + saas * nb]
+        colors_bar = ['#8DA0B3', '#C4652B', '#2D8C5A']
+
+        fig_compare.add_trace(go.Bar(
+            x=scenarios,
+            y=values,
+            marker_color=colors_bar,
+            text=[f"{v:,.0f} EUR" for v in values],
+            textposition='outside',
+            hovertemplate='<b>%{x}</b><br>%{y:,.0f} EUR/an<extra></extra>'
+        ))
+
+        fig_compare.update_layout(
+            margin=dict(l=10, r=10, t=20, b=10),
+            plot_bgcolor='rgba(0,0,0,0)',
+            paper_bgcolor='rgba(0,0,0,0)',
+            font=dict(family="Inter", size=11),
+            yaxis=dict(
+                title="EUR / an (HT)",
+                showgrid=True,
+                gridcolor='rgba(136, 152, 168, 0.2)',
+            ),
+            xaxis=dict(showgrid=False),
+            showlegend=False,
+            height=400
+        )
+
+        st.plotly_chart(fig_compare, use_container_width=True, config={
+            'displaylogo': False,
+            'modeBarButtonsToRemove': ['lasso2d', 'select2d']
+        })
+
+        # --- Detail horaire ---
+        with st.expander("Detail horaire de la simulation"):
+            detail_data = []
+            for h in range(24):
+                is_delest = h in selected_hours
+                energy_base = comp_hourly[h] + other_hourly[h]
+                if is_delest:
+                    energy_after = other_hourly[h]
+                else:
+                    energy_after = comp_hourly[h] + other_hourly[h] + rattrapage_per_hour
+                cost_before = energy_base * total_price_kwh[h]
+                cost_after = energy_after * total_price_kwh[h]
+
+                detail_data.append({
+                    'Heure': f"{h:02d}h",
+                    'Prix Spot (EUR/MWh)': round(spot_prices[h], 1),
+                    'kW avant': round(energy_base, 2),
+                    'kW apres': round(energy_after, 2),
+                    'Cout avant (EUR)': round(cost_before, 2),
+                    'Cout apres (EUR)': round(cost_after, 2),
+                    'Statut': 'DELESTE' if is_delest else 'Normal'
+                })
+
+            st.dataframe(pd.DataFrame(detail_data), use_container_width=True, hide_index=True)
