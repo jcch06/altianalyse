@@ -606,15 +606,18 @@ if analysis_run:
                 ax.set_title(f"Saison {title} (HT)", pad=20, fontweight="bold", fontsize=11, color='#8DA0B3')
                 ax.set_ylabel("Euros / mois", fontsize=9, color='#8DA0B3')
 
+                # Ajuster l'axe Y pour eviter que l'annotation soit coupee
+                ax.set_ylim(0, max(c_av, c_ap) * 1.25)
+
                 # Annotation gain
                 g = c_av - c_ap
                 if g > 0:
                     ax.annotate(
                         f"-{g:.0f} EUR\n(-{g / c_av * 100:.1f} %)",
-                        xy=(1, c_ap), xytext=(0, c_av),
+                        xy=(1, c_ap), xytext=(0, c_av * 1.02),
                         arrowprops=dict(arrowstyle="->", color="#8DA0B3", lw=1.8),
-                        color="#8DA0B3", fontweight="bold", ha='center', fontsize=9,
-                        bbox=dict(boxstyle="round,pad=0.3", fc="none", ec="#8DA0B3", lw=1)
+                        color="#8DA0B3", fontweight="bold", ha='center', va='bottom', fontsize=9,
+                        bbox=dict(boxstyle="round,pad=0.3", fc="#0E1117", ec="#8DA0B3", lw=1)
                     )
 
                 # Legende
