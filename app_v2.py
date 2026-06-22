@@ -546,6 +546,7 @@ spot_df = pd.DataFrame()
 res_df = pd.DataFrame()
 fig_evo = None
 fig_compare = None
+fig_monthly = None
 n_days_loaded = 0
 spot_avg_overall = 0.0
 cost_spot_annual = 0.0
@@ -1290,6 +1291,33 @@ with tab_spot:
                 xaxis=dict(showgrid=False), showlegend=False, height=400
             )
 
+            # --- Graphique de comparaison mensuelle ---
+            fig_monthly = go.Figure()
+            fig_monthly.add_trace(go.Bar(
+                x=monthly['Mois'],
+                y=monthly['Spot seul (EUR)'],
+                name='Spot seul (sans Altileo)',
+                marker_color='#C4652B',
+                hovertemplate='<b>%{x}</b><br>Spot seul : %{y:,.0f} EUR<extra></extra>'
+            ))
+            fig_monthly.add_trace(go.Bar(
+                x=monthly['Mois'],
+                y=monthly['Spot+Altileo (EUR)'],
+                name='Spot + Altileo',
+                marker_color='#2D8C5A',
+                hovertemplate='<b>%{x}</b><br>Spot + Altileo : %{y:,.0f} EUR<extra></extra>'
+            ))
+            fig_monthly.update_layout(
+                barmode='group',
+                margin=dict(l=10, r=10, t=30, b=10),
+                plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)',
+                font=dict(family="Inter", size=11),
+                yaxis=dict(title="Cout mensuel (EUR HT)", showgrid=True, gridcolor='rgba(136,152,168,0.2)'),
+                xaxis=dict(showgrid=False),
+                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+                height=400
+            )
+
 # ----------------------------------------------------------
 # ONGLET 6 : GRAPHIQUES (PRIX SPOT)
 # ----------------------------------------------------------
@@ -1300,7 +1328,11 @@ with tab_spot_charts:
     elif spot_df is None or spot_df.empty:
         st.error("Impossible de charger les donnees Nord Pool pour les graphiques.")
     else:
-        st.markdown('<p class="section-title">Comparaison visuelle des scenarios (annuel HT)</p>', unsafe_allow_html=True)
+        st.markdown('<p class="section-title">Comparaison mensuelle : Spot seul vs Spot+Altileo (HT)</p>', unsafe_allow_html=True)
+        if fig_monthly is not None:
+            st.plotly_chart(fig_monthly, use_container_width=True, config={'displaylogo': False, 'modeBarButtonsToRemove': ['lasso2d', 'select2d']})
+
+        st.markdown('<p class="section-title">Comparaison visuelle globale des scenarios (annuel HT)</p>', unsafe_allow_html=True)
         if fig_compare is not None:
             st.plotly_chart(fig_compare, use_container_width=True, config={'displaylogo': False, 'modeBarButtonsToRemove': ['lasso2d', 'select2d']})
 
