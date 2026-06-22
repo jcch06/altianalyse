@@ -684,10 +684,10 @@ if analysis_run:
 # ============================================================
 
 tab_dashboard, tab_details, tab_charts, tab_spot, tab_monitoring = st.tabs([
-    "Indicateurs financiers",
-    "Audit detaille",
-    "Modelisation graphique",
-    "Simulation Spot",
+    "Simulation Delestage (Contrat HC/HP)",
+    "Audit detaille (HC/HP)",
+    "Graphiques (HC/HP)",
+    "Simulation Delestage (Prix SPOT)",
     "Monitoring capteurs"
 ])
 
