@@ -1308,6 +1308,47 @@ with tab_spot:
                 xaxis=dict(showgrid=False), showlegend=False, height=400
             )
 
+            # --- Textes et hovers pour comparaison mensuelle ---
+            text_hchp = []
+            text_spot = []
+            text_altileo = []
+            hover_hchp = []
+            hover_spot = []
+            hover_altileo = []
+
+            for idx, row in monthly.iterrows():
+                c_base = row['HC/HP de base (EUR)']
+                c_spot = row['Spot seul (EUR)']
+                c_altileo = row['Spot+Altileo (EUR)']
+                
+                text_hchp.append(f"{c_base:,.0f} €")
+                hover_hchp.append(f"<b>{row['Mois']}</b><br>HC/HP de base : {c_base:,.0f} EUR<extra></extra>")
+                
+                if c_base > 0:
+                    pct_spot = (c_spot - c_base) / c_base * 100
+                    pct_altileo = (c_altileo - c_base) / c_base * 100
+                    text_spot.append(f"{c_spot:,.0f} €<br>({pct_spot:+.1f}%)")
+                    text_altileo.append(f"{c_altileo:,.0f} €<br>({pct_altileo:+.1f}%)")
+                else:
+                    text_spot.append(f"{c_spot:,.0f} €")
+                    text_altileo.append(f"{c_altileo:,.0f} €")
+                    pct_spot = 0
+                    pct_altileo = 0
+                
+                pct_vs_spot = (c_altileo - c_spot) / c_spot * 100 if c_spot > 0 else 0
+                
+                hover_spot.append(
+                    f"<b>{row['Mois']}</b><br>"
+                    f"Spot seul : {c_spot:,.0f} EUR<br>"
+                    f"Diff vs HC/HP : {pct_spot:+.1f}%<extra></extra>"
+                )
+                hover_altileo.append(
+                    f"<b>{row['Mois']}</b><br>"
+                    f"Spot + Altileo : {c_altileo:,.0f} EUR<br>"
+                    f"Gain vs HC/HP : {pct_altileo:+.1f}%<br>"
+                    f"Gain vs Spot seul : {pct_vs_spot:+.1f}%<extra></extra>"
+                )
+
             # --- Graphique de comparaison mensuelle ---
             fig_monthly = go.Figure()
             fig_monthly.add_trace(go.Bar(
@@ -1315,22 +1356,34 @@ with tab_spot:
                 y=monthly['HC/HP de base (EUR)'],
                 name='HC/HP de base (sans delestage)',
                 marker_color='#8DA0B3',
-                hovertemplate='<b>%{x}</b><br>HC/HP de base : %{y:,.0f} EUR<extra></extra>'
+                text=text_hchp,
+                textposition='outside',
+                hovertemplate='%{customdata}'
             ))
+            fig_monthly.data[-1].customdata = hover_hchp
+            
             fig_monthly.add_trace(go.Bar(
                 x=monthly['Mois'],
                 y=monthly['Spot seul (EUR)'],
                 name='Spot seul (sans delestage)',
                 marker_color='#C4652B',
-                hovertemplate='<b>%{x}</b><br>Spot seul : %{y:,.0f} EUR<extra></extra>'
+                text=text_spot,
+                textposition='outside',
+                hovertemplate='%{customdata}'
             ))
+            fig_monthly.data[-1].customdata = hover_spot
+            
             fig_monthly.add_trace(go.Bar(
                 x=monthly['Mois'],
                 y=monthly['Spot+Altileo (EUR)'],
                 name='Spot + Altileo',
                 marker_color='#2D8C5A',
-                hovertemplate='<b>%{x}</b><br>Spot + Altileo : %{y:,.0f} EUR<extra></extra>'
+                text=text_altileo,
+                textposition='outside',
+                hovertemplate='%{customdata}'
             ))
+            fig_monthly.data[-1].customdata = hover_altileo
+
             fig_monthly.update_layout(
                 barmode='group',
                 margin=dict(l=10, r=10, t=30, b=10),
@@ -1339,7 +1392,7 @@ with tab_spot:
                 yaxis=dict(title="Cout mensuel (EUR HT)", showgrid=True, gridcolor='rgba(136,152,168,0.2)'),
                 xaxis=dict(showgrid=False),
                 legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-                height=400
+                height=450
             )
 
 # ----------------------------------------------------------
