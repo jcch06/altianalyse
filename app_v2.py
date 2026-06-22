@@ -541,6 +541,21 @@ f_ref_an = k_ref_an = gain_an_net = gain_an_brut = 0
 k_sauves_an = pct = roi = i_net = 0
 s_h = s_e = None
 
+# Variables Spot (initialisees a None ou valeurs par defaut)
+spot_df = pd.DataFrame()
+res_df = pd.DataFrame()
+fig_evo = None
+fig_compare = None
+n_days_loaded = 0
+spot_avg_overall = 0.0
+cost_spot_annual = 0.0
+cost_altileo_annual = 0.0
+kwh_saved_annual = 0.0
+gain_spot_brut = 0.0
+gain_spot_net = 0.0
+gain_vs_actuel = 0.0
+
+
 if analysis_run:
     with st.spinner("Analyse en cours..."):
         df_raw = fetch_supabase_data(str(d_start), str(d_end), t_name, tuple([s_comp, s_cvc]))
@@ -683,11 +698,12 @@ if analysis_run:
 # 10. ONGLETS
 # ============================================================
 
-tab_dashboard, tab_details, tab_charts, tab_spot, tab_monitoring = st.tabs([
+tab_dashboard, tab_details, tab_charts, tab_spot, tab_spot_charts, tab_monitoring = st.tabs([
     "Simulation Delestage (Contrat HC/HP)",
     "Audit detaille (HC/HP)",
     "Graphiques (HC/HP)",
     "Simulation Delestage (Prix SPOT)",
+    "Graphiques (Prix SPOT)",
     "Monitoring capteurs"
 ])
 
@@ -998,7 +1014,7 @@ with tab_spot:
     st.markdown('<p class="section-title">Simulation contrat Spot -- Donnees Nord Pool France</p>', unsafe_allow_html=True)
 
     if not analysis_run:
-        st.info("Lancez d'abord l'analyse dans l'onglet Indicateurs financiers.")
+        st.info("Lancez d'abord l'analyse dans l'onglet Simulation Delestage (Contrat HC/HP).")
     else:
         # --- Profil de consommation du client ---
         df_spot_calc = df_proc.copy()
@@ -1163,10 +1179,71 @@ with tab_spot:
             with kpi6:
                 st.metric(label="kWh economises", value=f"{kwh_saved_annual:,.0f} kWh / an", delta=f"{(kwh_saved_annual * 0.05) / 1000:,.1f} t CO2", delta_color="off")
 
-            # --- Graphique evolution prix spot jour par jour ---
-            st.divider()
-            st.markdown('<p class="section-title">Evolution du prix Spot moyen journalier</p>', unsafe_allow_html=True)
+            # --- Export PDF Spot ---
+            def create_spot_pdf():
+                pdf = FPDF()
+                pdf.add_page()
+                pdf.set_font("Arial", "B", 16)
+                pdf.set_text_color(27, 58, 92)
+                pdf.cell(0, 10, "Rapport d'Audit Energetique Altileo (Simulation Spot)", ln=1, align="C")
+                
+                pdf.set_font("Arial", "", 11)
+                pdf.set_text_color(0, 0, 0)
+                pdf.ln(5)
+                pdf.cell(0, 6, f"Date de l'audit : {date.today().strftime('%d/%m/%Y')}", ln=1)
+                pdf.cell(0, 6, f"Nombre de chambres equipees : {nb}", ln=1)
+                pdf.cell(0, 6, f"Delestage programme (Spot) : {spot_delest_h} heures/jour", ln=1)
+                pdf.cell(0, 6, f"Marge fournisseur Spot : {spot_margin} EUR/MWh", ln=1)
+                pdf.cell(0, 6, f"Historique de prix charge : {n_days_loaded} jours (Moyenne : {spot_avg_overall:.1f} EUR/MWh)", ln=1)
+                
+                pdf.ln(5)
+                pdf.set_font("Arial", "B", 14)
+                pdf.set_text_color(27, 58, 92)
+                pdf.cell(0, 10, "Resultats Financiers (HT)", ln=1)
+                
+                pdf.set_font("Arial", "", 11)
+                pdf.set_text_color(0, 0, 0)
+                pdf.cell(0, 6, f"Facture contrat actuel (HC/HP) : {f_ref_an:,.0f} EUR/an", ln=1)
+                pdf.cell(0, 6, f"Facture Spot SANS Altileo : {cost_spot_annual:,.0f} EUR/an", ln=1)
+                pdf.cell(0, 6, f"Facture Spot AVEC Altileo : {(cost_altileo_annual + saas * nb):,.0f} EUR/an", ln=1)
+                pdf.cell(0, 6, f"Gain Altileo sur Spot : {gain_spot_net:,.0f} EUR/an (Brut : {gain_spot_brut:,.0f} EUR)", ln=1)
+                pdf.cell(0, 6, f"Gain total vs contrat actuel : {gain_vs_actuel:,.0f} EUR/an", ln=1)
+                pdf.cell(0, 6, f"Impact carbone : {(kwh_saved_annual * 0.05) / 1000:,.1f} tonnes de CO2 evitees/an", ln=1)
+                
+                return bytes(pdf.output())
 
+            st.divider()
+            spot_pdf_bytes = create_spot_pdf()
+            st.download_button(
+                label="📄 Telecharger le rapport PDF Spot",
+                data=spot_pdf_bytes,
+                file_name=f"Altileo_Audit_Spot_{date.today().strftime('%Y%m%d')}.pdf",
+                mime="application/pdf",
+                type="primary"
+            )
+
+            # --- Bilan mensuel ---
+            st.divider()
+            with st.expander("Detail mensuel de la simulation"):
+                res_df['mois'] = res_df['date'].dt.to_period('M').astype(str)
+                monthly = res_df.groupby('mois').agg(
+                    jours=('date', 'count'),
+                    prix_moyen=('avg_price', 'mean'),
+                    cout_spot=('cost_spot', 'sum'),
+                    cout_altileo=('cost_altileo', 'sum'),
+                    kwh_eco=('kwh_saved', 'sum'),
+                    gain=('gain_jour', 'sum')
+                ).reset_index()
+                monthly['cout_spot'] = monthly['cout_spot'] * nb
+                monthly['cout_altileo'] = monthly['cout_altileo'] * nb
+                monthly['kwh_eco'] = monthly['kwh_eco'] * nb
+                monthly['gain'] = monthly['gain'] * nb
+                monthly.columns = ['Mois', 'Jours', 'Prix moy (EUR/MWh)', 'Spot seul (EUR)', 'Spot+Altileo (EUR)', 'kWh eco.', 'Gain Altileo (EUR)']
+                for c in ['Prix moy (EUR/MWh)', 'Spot seul (EUR)', 'Spot+Altileo (EUR)', 'kWh eco.', 'Gain Altileo (EUR)']:
+                    monthly[c] = monthly[c].round(1)
+                st.dataframe(monthly, use_container_width=True, hide_index=True)
+
+            # --- Figures pour l'onglet graphique ---
             fig_evo = go.Figure()
             fig_evo.add_trace(go.Scatter(
                 x=res_df['date'], y=res_df['avg_price'],
@@ -1195,11 +1272,6 @@ with tab_spot:
                 legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
                 height=350
             )
-            st.plotly_chart(fig_evo, use_container_width=True, config={'displaylogo': False, 'modeBarButtonsToRemove': ['lasso2d', 'select2d']})
-
-            # --- Graphique comparatif barres annuelles ---
-            st.divider()
-            st.markdown('<p class="section-title">Comparaison visuelle des scenarios</p>', unsafe_allow_html=True)
 
             fig_compare = go.Figure()
             scenarios = ["Contrat actuel\n(HC/HP)", "Spot seul\n(sans Altileo)", "Spot + Altileo"]
@@ -1217,24 +1289,22 @@ with tab_spot:
                 yaxis=dict(title="EUR / an (HT)", showgrid=True, gridcolor='rgba(136,152,168,0.2)'),
                 xaxis=dict(showgrid=False), showlegend=False, height=400
             )
+
+# ----------------------------------------------------------
+# ONGLET 6 : GRAPHIQUES (PRIX SPOT)
+# ----------------------------------------------------------
+with tab_spot_charts:
+    st.markdown('<p class="section-title">Visualisation de la simulation Spot (Donnees Nord Pool)</p>', unsafe_allow_html=True)
+    if not analysis_run:
+        st.info("Lancez d'abord l'analyse dans l'onglet Simulation Delestage (Contrat HC/HP).")
+    elif spot_df is None or spot_df.empty:
+        st.error("Impossible de charger les donnees Nord Pool pour les graphiques.")
+    else:
+        st.markdown('<p class="section-title">Comparaison visuelle des scenarios (annuel HT)</p>', unsafe_allow_html=True)
+        if fig_compare is not None:
             st.plotly_chart(fig_compare, use_container_width=True, config={'displaylogo': False, 'modeBarButtonsToRemove': ['lasso2d', 'select2d']})
 
-            # --- Bilan mensuel ---
-            with st.expander("Detail mensuel de la simulation"):
-                res_df['mois'] = res_df['date'].dt.to_period('M').astype(str)
-                monthly = res_df.groupby('mois').agg(
-                    jours=('date', 'count'),
-                    prix_moyen=('avg_price', 'mean'),
-                    cout_spot=('cost_spot', 'sum'),
-                    cout_altileo=('cost_altileo', 'sum'),
-                    kwh_eco=('kwh_saved', 'sum'),
-                    gain=('gain_jour', 'sum')
-                ).reset_index()
-                monthly['cout_spot'] = monthly['cout_spot'] * nb
-                monthly['cout_altileo'] = monthly['cout_altileo'] * nb
-                monthly['kwh_eco'] = monthly['kwh_eco'] * nb
-                monthly['gain'] = monthly['gain'] * nb
-                monthly.columns = ['Mois', 'Jours', 'Prix moy (EUR/MWh)', 'Spot seul (EUR)', 'Spot+Altileo (EUR)', 'kWh eco.', 'Gain Altileo (EUR)']
-                for c in ['Prix moy (EUR/MWh)', 'Spot seul (EUR)', 'Spot+Altileo (EUR)', 'kWh eco.', 'Gain Altileo (EUR)']:
-                    monthly[c] = monthly[c].round(1)
-                st.dataframe(monthly, use_container_width=True, hide_index=True)
+        st.markdown('<p class="section-title">Evolution du prix Spot moyen journalier</p>', unsafe_allow_html=True)
+        if fig_evo is not None:
+            st.plotly_chart(fig_evo, use_container_width=True, config={'displaylogo': False, 'modeBarButtonsToRemove': ['lasso2d', 'select2d']})
+
