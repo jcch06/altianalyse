@@ -495,6 +495,12 @@ with st.sidebar:
             'taxes': st.number_input("Taxes CSPE (EUR/kWh)", value=0.02100, format="%.5f"),
         }
 
+    with st.expander("Parametres thermiques (HACCP)"):
+        t_consigne = st.number_input("Temperature consigne (C)", value=-18.0, step=0.5)
+        t_max = st.number_input("Limite HACCP (C)", value=-15.0, step=0.5)
+        pente_rechauffement = st.number_input("Rechauffement (C/h)", value=0.21, step=0.01)
+        pente_refroidissement = st.number_input("Refroidissement (C/h)", value=-0.70, step=0.05)
+
     st.divider()
 
     # --- Modelisation ---
@@ -615,6 +621,10 @@ if analysis_run:
             i_net = max(0, pr * nb - cee)
             roi = (i_net / gain_an_net * 12) if gain_an_net > 0 else 0
 
+            # Calcul thermique theorique
+            derive_max_hchp = h * pente_rechauffement
+            temp_max_hchp = t_consigne + derive_max_hchp
+
             # --- Generation des graphiques (en memoire) ---
             CHART_COLORS = ['#1B3A5C', '#2D8C5A', '#8DA0B3', '#C5CED6']
             CHART_LABELS = ['HC', 'HP', 'TURPE', 'Taxes']
@@ -699,12 +709,13 @@ if analysis_run:
 # 10. ONGLETS
 # ============================================================
 
-tab_dashboard, tab_details, tab_charts, tab_spot, tab_spot_charts, tab_monitoring = st.tabs([
+tab_dashboard, tab_details, tab_charts, tab_spot, tab_spot_charts, tab_thermal, tab_monitoring = st.tabs([
     "Simulation Delestage (Contrat HC/HP)",
     "Audit detaille (HC/HP)",
     "Graphiques (HC/HP)",
     "Simulation Delestage (Prix SPOT)",
     "Graphiques (Prix SPOT)",
+    "Validation Thermique",
     "Monitoring capteurs"
 ])
 
@@ -764,6 +775,13 @@ with tab_dashboard:
             st.markdown(f"**Abonnement SaaS :** {saas * nb:.0f} EUR / an")
 
         st.divider()
+        st.markdown('<p class="section-title">Validation Thermique HACCP</p>', unsafe_allow_html=True)
+        if temp_max_hchp > t_max:
+            st.error(f"⚠️ **RISQUE SANITAIRE** : La temperature maximale simulee atteint **{temp_max_hchp:.2f} C**, depassant la limite HACCP de **{t_max:.2f} C**.")
+        else:
+            st.success(f"✅ **CONFORME** : La temperature maximale simulee est de **{temp_max_hchp:.2f} C** (limite: {t_max:.2f} C).")
+
+        st.divider()
         
         # --- Export PDF ---
         def create_pdf():
@@ -797,6 +815,7 @@ with tab_dashboard:
             pdf.cell(0, 6, f"Gain d'exploitation NET : {gain_an_net:,.0f} EUR/an", ln=1)
             pdf.cell(0, 6, f"Retour sur investissement (ROI) : {roi:.1f} mois (soit {roi/12:.1f} ans)", ln=1)
             pdf.cell(0, 6, f"Impact carbone : {(k_sauves_an * 0.05) / 1000:,.1f} tonnes de CO2 evitees/an", ln=1)
+            pdf.cell(0, 6, f"Validation HACCP : {'ECHEC' if temp_max_hchp > t_max else 'CONFORME'} (Temp max: {temp_max_hchp:.2f} C)", ln=1)
             
             pdf.ln(10)
             pdf.set_font("Arial", "B", 14)
@@ -1131,6 +1150,17 @@ with tab_spot:
                     price_kwh = (prices_day[hh] + spot_margin) / 1000.0 + tarifs['turpe'] + tarifs['taxes']
                     cost_altileo_day += ratt_per_h * price_kwh
 
+                # Simulation thermique jour par jour
+                current_temp = t_consigne
+                max_temp_day = t_consigne
+                for hh in range(24):
+                    if hh in delest_hours_day:
+                        current_temp += pente_rechauffement
+                    else:
+                        current_temp = max(t_consigne, current_temp + pente_refroidissement)
+                    if current_temp > max_temp_day:
+                        max_temp_day = current_temp
+
                 # Reference HC/HP sans delestage pour la meme journee
                 dt_obj = pd.to_datetime(date_val)
                 month_val = dt_obj.month
@@ -1153,7 +1183,8 @@ with tab_spot:
                     'avg_price': prices_day.mean(),
                     'max_price': prices_day.max(),
                     'min_price': prices_day.min(),
-                    'kwh_saved': energy_removed_day - energy_rattrapage
+                    'kwh_saved': energy_removed_day - energy_rattrapage,
+                    'max_temp': max_temp_day
                 })
 
             res_df = pd.DataFrame(daily_results)
@@ -1171,6 +1202,7 @@ with tab_spot:
             gain_spot_brut = cost_spot_annual - cost_altileo_annual
             gain_spot_net = gain_spot_brut - (saas * nb)
             gain_vs_actuel = f_ref_an - (cost_altileo_annual + saas * nb)
+            max_temp_spot_annual = res_df['max_temp'].max()
 
             # --- KPIs ---
             st.divider()
@@ -1194,6 +1226,13 @@ with tab_spot:
                 st.metric(label="Gain total vs contrat actuel", value=f"{gain_vs_actuel:,.0f} EUR / an", delta="Spot + Altileo combine", delta_color="off")
             with kpi6:
                 st.metric(label="kWh economises", value=f"{kwh_saved_annual:,.0f} kWh / an", delta=f"{(kwh_saved_annual * 0.05) / 1000:,.1f} t CO2", delta_color="off")
+
+            st.divider()
+            st.markdown('<p class="section-title">Validation Thermique HACCP (Annuelle Spot)</p>', unsafe_allow_html=True)
+            if max_temp_spot_annual > t_max:
+                st.error(f"⚠️ **RISQUE SANITAIRE** : Sur l'annee, la temperature maximale simulee a atteint **{max_temp_spot_annual:.2f} C**, depassant la limite HACCP de **{t_max:.2f} C**.")
+            else:
+                st.success(f"✅ **CONFORME** : La temperature maximale simulee sur l'annee est restee a **{max_temp_spot_annual:.2f} C** (limite: {t_max:.2f} C).")
 
             # --- Export PDF Spot ---
             def create_spot_pdf():
@@ -1225,6 +1264,7 @@ with tab_spot:
                 pdf.cell(0, 6, f"Gain Altileo sur Spot : {gain_spot_net:,.0f} EUR/an (Brut : {gain_spot_brut:,.0f} EUR)", ln=1)
                 pdf.cell(0, 6, f"Gain total vs contrat actuel : {gain_vs_actuel:,.0f} EUR/an", ln=1)
                 pdf.cell(0, 6, f"Impact carbone : {(kwh_saved_annual * 0.05) / 1000:,.1f} tonnes de CO2 evitees/an", ln=1)
+                pdf.cell(0, 6, f"Validation HACCP : {'ECHEC' if max_temp_spot_annual > t_max else 'CONFORME'} (Temp max: {max_temp_spot_annual:.2f} C)", ln=1)
                 
                 return bytes(pdf.output())
 
@@ -1249,15 +1289,16 @@ with tab_spot:
                     cout_spot=('cost_spot', 'sum'),
                     cout_altileo=('cost_altileo', 'sum'),
                     kwh_eco=('kwh_saved', 'sum'),
-                    gain=('gain_jour', 'sum')
+                    gain=('gain_jour', 'sum'),
+                    temp_max=('max_temp', 'max')
                 ).reset_index()
                 monthly['cout_hchp'] = monthly['cout_hchp'] * nb
                 monthly['cout_spot'] = monthly['cout_spot'] * nb
                 monthly['cout_altileo'] = monthly['cout_altileo'] * nb
                 monthly['kwh_eco'] = monthly['kwh_eco'] * nb
                 monthly['gain'] = monthly['gain'] * nb
-                monthly.columns = ['Mois', 'Jours', 'Prix moy (EUR/MWh)', 'HC/HP de base (EUR)', 'Spot seul (EUR)', 'Spot+Altileo (EUR)', 'kWh eco.', 'Gain Altileo (EUR)']
-                for c in ['Prix moy (EUR/MWh)', 'HC/HP de base (EUR)', 'Spot seul (EUR)', 'Spot+Altileo (EUR)', 'kWh eco.', 'Gain Altileo (EUR)']:
+                monthly.columns = ['Mois', 'Jours', 'Prix moy (EUR/MWh)', 'HC/HP de base (EUR)', 'Spot seul (EUR)', 'Spot+Altileo (EUR)', 'kWh eco.', 'Gain Altileo (EUR)', 'Temp Max (C)']
+                for c in ['Prix moy (EUR/MWh)', 'HC/HP de base (EUR)', 'Spot seul (EUR)', 'Spot+Altileo (EUR)', 'kWh eco.', 'Gain Altileo (EUR)', 'Temp Max (C)']:
                     monthly[c] = monthly[c].round(1)
                 st.dataframe(monthly, use_container_width=True, hide_index=True)
 
@@ -1416,4 +1457,103 @@ with tab_spot_charts:
         st.markdown('<p class="section-title">Evolution du prix Spot moyen journalier</p>', unsafe_allow_html=True)
         if fig_evo is not None:
             st.plotly_chart(fig_evo, use_container_width=True, config={'displaylogo': False, 'modeBarButtonsToRemove': ['lasso2d', 'select2d']})
+
+# ----------------------------------------------------------
+# ONGLET 7 : VALIDATION THERMIQUE
+# ----------------------------------------------------------
+with tab_thermal:
+    st.markdown('<p class="section-title">Validation Thermique HACCP (Simulation Interactive)</p>', unsafe_allow_html=True)
+    if not analysis_run:
+        st.info("Lancez d'abord l'analyse dans le panneau lateral.")
+    else:
+        st.markdown("Simulez l'impact du delestage sur la temperature a coeur de la marchandise (ex: carton).")
+        
+        scenario = st.radio("Scenario de delestage a simuler", ["Optimisation Spot (Moyenne)", "Contrat classique (HC/HP)"], horizontal=True)
+        
+        if scenario == "Optimisation Spot (Moyenne)":
+            if spot_df is None or spot_df.empty:
+                st.warning("Veuillez lancer l'analyse avec un historique Spot valide pour voir ce scenario.")
+                shed_hours = []
+            else:
+                shed_hours = top_hours_avg
+                st.markdown(f"**Heures coupees (Spot) :** {', '.join([f'{hh}h' for hh in sorted(shed_hours)])}")
+        else:
+            c1, c2 = st.columns(2)
+            with c1:
+                start_h = st.number_input("Heure de debut de coupure (HC/HP)", min_value=0, max_value=23, value=18)
+            with c2:
+                st.markdown(f"<br>**Duree de coupure retenue :** {h} heures", unsafe_allow_html=True)
+            shed_hours = [(int(start_h) + i) % 24 for i in range(int(h))]
+            st.markdown(f"**Heures coupees (HC/HP) :** {', '.join([f'{hh}h' for hh in sorted(shed_hours)])}")
+
+        # --- Simulation 24h ---
+        temp_24h = [t_consigne]
+        current_t = t_consigne
+        
+        for hh in range(24):
+            if hh in shed_hours:
+                current_t += pente_rechauffement
+            else:
+                current_t = max(t_consigne, current_t + pente_refroidissement)
+            temp_24h.append(current_t)
+            
+        fig_24h = go.Figure()
+        fig_24h.add_trace(go.Scatter(x=list(range(25)), y=temp_24h, mode='lines', name='Temperature Produit', line=dict(color='#C4652B', width=3)))
+        fig_24h.add_hline(y=t_consigne, line_dash="dash", line_color="#2D8C5A", annotation_text=f"Consigne ({t_consigne}C)", annotation_position="top left")
+        fig_24h.add_hline(y=t_max, line_dash="dash", line_color="#E74C3C", annotation_text=f"Limite HACCP ({t_max}C)", annotation_position="bottom left")
+        
+        for hh in shed_hours:
+            fig_24h.add_vrect(x0=hh, x1=hh+1, fillcolor="rgba(231,76,60,0.1)", layer="below", line_width=0)
+            
+        fig_24h.update_layout(
+            title="Cycle journalier (24 heures) - Zone rouge = compresseur coupe",
+            xaxis_title="Heure de la journee", yaxis_title="Temperature (C)",
+            margin=dict(l=10, r=10, t=40, b=10), height=350,
+            plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)', font=dict(family="Inter", color='#8DA0B3'),
+            yaxis=dict(showgrid=True, gridcolor='rgba(136,152,168,0.2)'), xaxis=dict(showgrid=False)
+        )
+        
+        # --- Simulation 168h (7 jours) ---
+        temp_168h = [t_consigne]
+        current_t = t_consigne
+        
+        for day in range(7):
+            for hh in range(24):
+                if hh in shed_hours:
+                    current_t += pente_rechauffement
+                else:
+                    current_t = max(t_consigne, current_t + pente_refroidissement)
+                temp_168h.append(current_t)
+                
+        max_168h = max(temp_168h)
+        is_conforme = max_168h <= t_max
+        
+        fig_168h = go.Figure()
+        fig_168h.add_trace(go.Scatter(x=list(range(169)), y=temp_168h, mode='lines', name='Temperature Produit', line=dict(color='#1B3A5C', width=2)))
+        fig_168h.add_hline(y=t_consigne, line_dash="dash", line_color="#2D8C5A", annotation_text=f"Consigne ({t_consigne}C)", annotation_position="top left")
+        fig_168h.add_hline(y=t_max, line_dash="dash", line_color="#E74C3C", annotation_text=f"Limite HACCP ({t_max}C)", annotation_position="bottom left")
+        
+        for day in range(7):
+            fig_168h.add_vline(x=day*24, line_dash="dot", line_color="rgba(136,152,168,0.5)")
+            
+        fig_168h.update_layout(
+            title="Stress Test inertiel (7 jours / 168 heures)",
+            xaxis_title="Heure cumulée", yaxis_title="Temperature (C)",
+            margin=dict(l=10, r=10, t=40, b=10), height=350,
+            plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)', font=dict(family="Inter", color='#8DA0B3'),
+            yaxis=dict(showgrid=True, gridcolor='rgba(136,152,168,0.2)'), xaxis=dict(showgrid=False)
+        )
+        
+        # Affichage
+        c_kpi1, c_kpi2 = st.columns(2)
+        with c_kpi1:
+            if is_conforme:
+                st.success(f"✅ **CONFORME** : La temperature reste stable et le compresseur a le temps de rattraper la consigne chaque jour.")
+            else:
+                st.error(f"⚠️ **RISQUE SANITAIRE** : Derivation thermique detectee. La chaleur s'accumule de jour en jour.")
+        with c_kpi2:
+            st.metric(label="Pic de temperature sur 7 jours", value=f"{max_168h:.2f} C", delta=f"{max_168h - t_consigne:+.2f} C vs consigne", delta_color="inverse")
+            
+        st.plotly_chart(fig_24h, use_container_width=True, config={'displaylogo': False})
+        st.plotly_chart(fig_168h, use_container_width=True, config={'displaylogo': False})
 
