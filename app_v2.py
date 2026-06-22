@@ -1062,8 +1062,33 @@ with tab_spot:
             for date_val, day_df in spot_df.groupby('date'):
                 prices_day = day_df.set_index('hour')['price_eur_mwh'].reindex(range(24), fill_value=spot_avg_overall)
 
-                # Les N heures les plus cheres de CE jour
-                delest_hours_day = prices_day.nlargest(spot_delest_h).index.tolist()
+                # Recherche gloutonne des N heures les plus rentables a delester
+                # en prenant en compte le profil de consommation et le cout du rattrapage
+                delest_hours_day = []
+                for _ in range(spot_delest_h):
+                    best_h = -1
+                    best_cost = float('inf')
+                    for test_h in range(24):
+                        if test_h not in delest_hours_day:
+                            test_shed = delest_hours_day + [test_h]
+                            e_rem = sum(all_hourly[hh] * comp_ratio[hh] for hh in test_shed)
+                            e_rat = e_rem * r * (1.0 - cop) * (1.0 + sec)
+                            avail = [hh for hh in range(24) if hh not in test_shed]
+                            rat_per_h = e_rat / len(avail) if avail else 0
+                            
+                            c_test = 0.0
+                            for hh in range(24):
+                                p_kwh = (prices_day[hh] + spot_margin) / 1000.0 + tarifs['turpe'] + tarifs['taxes']
+                                if hh in test_shed:
+                                    c_test += all_hourly[hh] * (1 - comp_ratio[hh]) * p_kwh
+                                else:
+                                    c_test += (all_hourly[hh] + rat_per_h) * p_kwh
+                                    
+                            if c_test < best_cost:
+                                best_cost = c_test
+                                best_h = test_h
+                    if best_h != -1:
+                        delest_hours_day.append(best_h)
 
                 cost_base_day = 0.0
                 cost_altileo_day = 0.0
