@@ -1131,8 +1131,23 @@ with tab_spot:
                     price_kwh = (prices_day[hh] + spot_margin) / 1000.0 + tarifs['turpe'] + tarifs['taxes']
                     cost_altileo_day += ratt_per_h * price_kwh
 
+                # Reference HC/HP sans delestage pour la meme journee
+                dt_obj = pd.to_datetime(date_val)
+                month_val = dt_obj.month
+                saison_val = 'hiver' if month_val in [11, 12, 1, 2, 3] else 'ete'
+                cost_hchp_day = 0.0
+                for hh in range(24):
+                    type_h = 'HC' if (hh >= 22 or hh < 6) else 'HP'
+                    if saison_val == 'hiver':
+                        t_base = tarifs['hp_hiv'] if type_h == 'HP' else tarifs['hc_hiv']
+                    else:
+                        t_base = tarifs['hp_ete'] if type_h == 'HP' else tarifs['hc_ete']
+                    p_kwh = t_base + tarifs['turpe'] + tarifs['taxes']
+                    cost_hchp_day += all_hourly[hh] * p_kwh
+
                 daily_results.append({
                     'date': date_val,
+                    'cost_hchp': cost_hchp_day,
                     'cost_spot': cost_base_day,
                     'cost_altileo': cost_altileo_day,
                     'avg_price': prices_day.mean(),
@@ -1230,17 +1245,19 @@ with tab_spot:
                 monthly = res_df.groupby('mois').agg(
                     jours=('date', 'count'),
                     prix_moyen=('avg_price', 'mean'),
+                    cout_hchp=('cost_hchp', 'sum'),
                     cout_spot=('cost_spot', 'sum'),
                     cout_altileo=('cost_altileo', 'sum'),
                     kwh_eco=('kwh_saved', 'sum'),
                     gain=('gain_jour', 'sum')
                 ).reset_index()
+                monthly['cout_hchp'] = monthly['cout_hchp'] * nb
                 monthly['cout_spot'] = monthly['cout_spot'] * nb
                 monthly['cout_altileo'] = monthly['cout_altileo'] * nb
                 monthly['kwh_eco'] = monthly['kwh_eco'] * nb
                 monthly['gain'] = monthly['gain'] * nb
-                monthly.columns = ['Mois', 'Jours', 'Prix moy (EUR/MWh)', 'Spot seul (EUR)', 'Spot+Altileo (EUR)', 'kWh eco.', 'Gain Altileo (EUR)']
-                for c in ['Prix moy (EUR/MWh)', 'Spot seul (EUR)', 'Spot+Altileo (EUR)', 'kWh eco.', 'Gain Altileo (EUR)']:
+                monthly.columns = ['Mois', 'Jours', 'Prix moy (EUR/MWh)', 'HC/HP de base (EUR)', 'Spot seul (EUR)', 'Spot+Altileo (EUR)', 'kWh eco.', 'Gain Altileo (EUR)']
+                for c in ['Prix moy (EUR/MWh)', 'HC/HP de base (EUR)', 'Spot seul (EUR)', 'Spot+Altileo (EUR)', 'kWh eco.', 'Gain Altileo (EUR)']:
                     monthly[c] = monthly[c].round(1)
                 st.dataframe(monthly, use_container_width=True, hide_index=True)
 
@@ -1295,8 +1312,15 @@ with tab_spot:
             fig_monthly = go.Figure()
             fig_monthly.add_trace(go.Bar(
                 x=monthly['Mois'],
+                y=monthly['HC/HP de base (EUR)'],
+                name='HC/HP de base (sans delestage)',
+                marker_color='#8DA0B3',
+                hovertemplate='<b>%{x}</b><br>HC/HP de base : %{y:,.0f} EUR<extra></extra>'
+            ))
+            fig_monthly.add_trace(go.Bar(
+                x=monthly['Mois'],
                 y=monthly['Spot seul (EUR)'],
-                name='Spot seul (sans Altileo)',
+                name='Spot seul (sans delestage)',
                 marker_color='#C4652B',
                 hovertemplate='<b>%{x}</b><br>Spot seul : %{y:,.0f} EUR<extra></extra>'
             ))
