@@ -1,5 +1,6 @@
 import os
 import math
+import requests as req
 import pandas as pd
 import streamlit as st
 import plotly.graph_objects as go
@@ -392,6 +393,44 @@ def fetch_monitoring_data(table_name: str, sensors: tuple, start_ts: str, end_ts
         return pd.DataFrame()
 
 # ============================================================
+# 6b. FONCTIONS : NORD POOL SPOT
+# ============================================================
+
+@st.cache_data(ttl=86400, show_spinner=False)
+def fetch_nordpool_prices(start_date_str: str, end_date_str: str):
+    """Recupere les prix Day-Ahead France depuis l'API Nord Pool.
+    Retourne un DataFrame avec colonnes : date, hour (0-23), price_eur_mwh.
+    Les quart-horaires sont moyennes par heure."""
+    records = []
+    current = datetime.strptime(start_date_str, '%Y-%m-%d').date()
+    end = datetime.strptime(end_date_str, '%Y-%m-%d').date()
+
+    while current <= end:
+        url = (
+            f"https://dataportal-api.nordpoolgroup.com/api/DayAheadPrices"
+            f"?date={current}&market=DayAhead&deliveryArea=FR&currency=EUR"
+        )
+        try:
+            resp = req.get(url, timeout=15)
+            if resp.status_code == 200:
+                entries = resp.json().get('multiAreaEntries', [])
+                # 96 quart-horaires -> 24 heures (moyenne de 4)
+                for i in range(0, min(len(entries), 96), 4):
+                    chunk = entries[i:i + 4]
+                    prices = [e['entryPerArea'].get('FR', 0) for e in chunk if 'entryPerArea' in e]
+                    if prices:
+                        records.append({
+                            'date': current.isoformat(),
+                            'hour': i // 4,
+                            'price_eur_mwh': sum(prices) / len(prices)
+                        })
+        except Exception:
+            pass
+        current += timedelta(days=1)
+
+    return pd.DataFrame(records) if records else pd.DataFrame()
+
+# ============================================================
 # 7. INTERFACE : EN-TETE
 # ============================================================
 
@@ -480,8 +519,9 @@ with st.sidebar:
 
     # --- Simulation Spot ---
     st.markdown("### Simulation Spot")
-    spot_avg = st.number_input("Prix Spot moyen (EUR/MWh)", value=140.0, step=5.0)
+    spot_delest_h = st.slider("Heures delestees / jour", 1, 12, 6)
     spot_margin = st.number_input("Marge fournisseur (EUR/MWh)", value=5.0, step=1.0)
+    spot_days = st.slider("Jours d'historique Nord Pool", 30, 180, 90, step=10)
 
     st.divider()
 
@@ -952,106 +992,19 @@ with tab_monitoring:
             st.caption(f"Derniere actualisation : {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}")
 
 # ----------------------------------------------------------
-# ONGLET 5 : SIMULATION SPOT
+# ONGLET 5 : SIMULATION SPOT (DONNEES NORD POOL)
 # ----------------------------------------------------------
 with tab_spot:
-    st.markdown('<p class="section-title">Simulation contrat Spot (type Sobry)</p>', unsafe_allow_html=True)
+    st.markdown('<p class="section-title">Simulation contrat Spot -- Donnees Nord Pool France</p>', unsafe_allow_html=True)
 
     if not analysis_run:
         st.info("Lancez d'abord l'analyse dans l'onglet Indicateurs financiers.")
     else:
-        # --- Profil spot type (forme "dos de chameau" RTE) ---
-        # Ratios normalises : moyenne = 1.0
-        # Basé sur courbe RTE : creux solaire 12h-15h, pics matin+soir
-        SPOT_RATIOS = [
-            1.20, 1.10, 1.00, 0.80, 0.65, 0.85,   # 00h-05h
-            1.00, 1.20, 1.30, 1.35, 1.10, 0.80,   # 06h-11h
-            0.60, 0.45, 0.20, 0.45, 0.60, 0.85,   # 12h-17h
-            1.10, 1.30, 1.40, 1.35, 1.30, 1.50    # 18h-23h
-        ]
-
-        spot_prices = [ratio * spot_avg for ratio in SPOT_RATIOS]
-
-        # Heures par defaut : les 5 plus cheres
-        hours_by_price = sorted(range(24), key=lambda x: spot_prices[x], reverse=True)
-        default_delest = sorted(hours_by_price[:5])
-
-        # Initialiser les checkboxes au premier lancement
-        if 'spot_init_done' not in st.session_state:
-            st.session_state.spot_init_done = True
-            for hh in range(24):
-                st.session_state[f'spot_h_{hh}'] = (hh in default_delest)
-
-        # --- Grille cliquable : 2 rangees de 12 heures ---
-        st.markdown("**Cliquez sur une heure pour la delester / reactiver :**")
-
-        cols_row1 = st.columns(12)
-        for i in range(12):
-            with cols_row1[i]:
-                st.checkbox(f"{i:02d}h", key=f'spot_h_{i}')
-
-        cols_row2 = st.columns(12)
-        for i in range(12):
-            hh = i + 12
-            with cols_row2[i]:
-                st.checkbox(f"{hh:02d}h", key=f'spot_h_{hh}')
-
-        selected_hours = sorted([hh for hh in range(24) if st.session_state.get(f'spot_h_{hh}', False)])
-        nb_heures_delest = len(selected_hours)
-
-        # --- Graphique Plotly : profil spot avec heures delestees ---
-        bar_colors = []
-        for h in range(24):
-            if h in selected_hours:
-                bar_colors.append('#E74C3C')  # Rouge = deleste
-            else:
-                bar_colors.append('#1B3A5C')  # Bleu = normal
-
-        fig_spot = go.Figure()
-        fig_spot.add_trace(go.Bar(
-            x=[f"{h:02d}h" for h in range(24)],
-            y=spot_prices,
-            marker_color=bar_colors,
-            hovertemplate='<b>%{x}</b><br>%{y:.1f} EUR/MWh<extra></extra>'
-        ))
-
-        fig_spot.update_layout(
-            margin=dict(l=10, r=10, t=40, b=10),
-            plot_bgcolor='rgba(0,0,0,0)',
-            paper_bgcolor='rgba(0,0,0,0)',
-            font=dict(family="Inter", size=10),
-            yaxis=dict(
-                title="EUR / MWh",
-                showgrid=True,
-                gridcolor='rgba(136, 152, 168, 0.2)',
-            ),
-            xaxis=dict(
-                showgrid=False,
-                showline=True,
-                linecolor='rgba(136, 152, 168, 0.5)',
-            ),
-            title=dict(
-                text=f"Profil Spot type -- {nb_heures_delest} heures delestees (en rouge)",
-                font=dict(size=13),
-                x=0.5
-            ),
-            showlegend=False
-        )
-
-        st.plotly_chart(fig_spot, use_container_width=True, config={
-            'displaylogo': False,
-            'modeBarButtonsToRemove': ['lasso2d', 'select2d']
-        })
-
-        # --- Simulation financiere Spot ---
-        # Utiliser la meme base d'energie que le modele HC/HP
+        # --- Profil de consommation du client ---
         df_spot_calc = df_proc.copy()
         df_spot_calc['heure'] = df_spot_calc['timestamp'].dt.hour
-
-        # Energie horaire totale (meme methode que calculate_period_summary)
         all_hourly = df_spot_calc.groupby('heure')['puissance_kw'].mean().reindex(range(24), fill_value=0)
 
-        # Proportion compresseur par heure (pour savoir quoi delester)
         comp_hourly_raw = df_spot_calc[df_spot_calc['categorie_conso'] == 'compresseur']\
             .groupby('heure')['puissance_kw'].mean().reindex(range(24), fill_value=0)
         other_hourly_raw = df_spot_calc[df_spot_calc['categorie_conso'] != 'compresseur']\
@@ -1059,158 +1012,204 @@ with tab_spot:
         total_raw = comp_hourly_raw + other_hourly_raw
         comp_ratio = (comp_hourly_raw / total_raw).fillna(0)
 
-        # Prix total par kWh a chaque heure (spot + marge + TURPE + taxes)
-        total_price_kwh = [(p + spot_margin) / 1000.0 + tarifs['turpe'] + tarifs['taxes'] for p in spot_prices]
+        # --- Chargement des prix Nord Pool ---
+        spot_end_date = date.today() - timedelta(days=1)
+        spot_start_date = spot_end_date - timedelta(days=spot_days)
 
-        # Scenario A : Spot SANS Altileo (consommation inchangee)
-        cost_spot_daily = sum(
-            all_hourly[h] * total_price_kwh[h]
-            for h in range(24)
-        )
+        with st.spinner(f"Chargement des prix Spot Nord Pool ({spot_days} jours)..."):
+            spot_df = fetch_nordpool_prices(spot_start_date.isoformat(), spot_end_date.isoformat())
 
-        # Scenario B : Spot AVEC Altileo (delestage sur heures selectionnees)
-        # L'energie compresseur retiree (proportionnelle)
-        energy_removed = sum(all_hourly[h] * comp_ratio[h] for h in selected_hours)
-        energy_rattrapage = energy_removed * r * (1.0 - cop) * (1.0 + sec)
+        if spot_df.empty:
+            st.error("Impossible de charger les donnees Nord Pool. Verifiez votre connexion.")
+        else:
+            n_days_loaded = spot_df['date'].nunique()
+            spot_avg_overall = spot_df['price_eur_mwh'].mean()
 
-        available_hours = [h for h in range(24) if h not in selected_hours]
-        rattrapage_per_hour = energy_rattrapage / len(available_hours) if available_hours else 0
+            st.success(f"{n_days_loaded} jours charges ({spot_start_date.strftime('%d/%m/%Y')} au {spot_end_date.strftime('%d/%m/%Y')}) -- Prix moyen : **{spot_avg_overall:.1f} EUR/MWh**")
 
-        cost_spot_altileo_daily = 0
-        for h in range(24):
-            if h in selected_hours:
-                # Compresseur eteint : seule la part non-compresseur reste
-                energy_h = all_hourly[h] * (1 - comp_ratio[h])
-            else:
-                # Consommation normale + part de rattrapage
-                energy_h = all_hourly[h] + rattrapage_per_hour
-            cost_spot_altileo_daily += energy_h * total_price_kwh[h]
+            # --- Profil horaire moyen (depuis les vraies donnees) ---
+            avg_profile = spot_df.groupby('hour')['price_eur_mwh'].mean().reindex(range(24), fill_value=0)
 
-        # Annualisation (x30 jours x12 mois x nb chambres)
-        cost_spot_annual = cost_spot_daily * 30 * 12 * nb
-        cost_spot_altileo_annual = cost_spot_altileo_daily * 30 * 12 * nb
+            # Identifier les heures les plus cheres en moyenne pour le graphique
+            top_hours_avg = avg_profile.nlargest(spot_delest_h).index.tolist()
 
-        gain_spot_brut = cost_spot_annual - cost_spot_altileo_annual
-        gain_spot_net = gain_spot_brut - (saas * nb)
-        gain_vs_actuel = f_ref_an - (cost_spot_altileo_annual + saas * nb)
+            bar_colors = ['#E74C3C' if hh in top_hours_avg else '#1B3A5C' for hh in range(24)]
 
-        kwh_spot_saved_daily = energy_removed - energy_rattrapage
-        kwh_spot_saved_annual = kwh_spot_saved_daily * 30 * 12 * nb
-
-        st.divider()
-
-        # --- KPIs comparatifs ---
-        st.markdown('<p class="section-title">Comparaison des 3 scenarios (annuel HT)</p>', unsafe_allow_html=True)
-
-        kpi1, kpi2, kpi3 = st.columns(3)
-        with kpi1:
-            st.metric(
-                label="Contrat actuel (HC/HP)",
-                value=f"{f_ref_an:,.0f} EUR",
-                delta="Reference",
-                delta_color="off"
+            fig_profile = go.Figure()
+            fig_profile.add_trace(go.Bar(
+                x=[f"{hh:02d}h" for hh in range(24)],
+                y=avg_profile.values,
+                marker_color=bar_colors,
+                hovertemplate='<b>%{x}</b><br>%{y:.1f} EUR/MWh<extra></extra>'
+            ))
+            fig_profile.update_layout(
+                margin=dict(l=10, r=10, t=40, b=10),
+                plot_bgcolor='rgba(0,0,0,0)',
+                paper_bgcolor='rgba(0,0,0,0)',
+                font=dict(family="Inter", size=10),
+                yaxis=dict(title="EUR / MWh", showgrid=True, gridcolor='rgba(136,152,168,0.2)'),
+                xaxis=dict(showgrid=False, showline=True, linecolor='rgba(136,152,168,0.5)'),
+                title=dict(
+                    text=f"Profil horaire moyen Nord Pool FR -- {spot_delest_h}h delestees/jour (en rouge)",
+                    font=dict(size=13), x=0.5
+                ),
+                showlegend=False
             )
-        with kpi2:
-            delta_vs_actuel_pct = ((cost_spot_annual - f_ref_an) / f_ref_an * 100) if f_ref_an > 0 else 0
-            st.metric(
-                label="Spot SANS Altileo",
-                value=f"{cost_spot_annual:,.0f} EUR",
-                delta=f"{delta_vs_actuel_pct:+.1f} % vs actuel",
-                delta_color="inverse"
-            )
-        with kpi3:
-            delta_spot_alt_pct = ((cost_spot_altileo_annual + saas * nb - f_ref_an) / f_ref_an * 100) if f_ref_an > 0 else 0
-            st.metric(
-                label="Spot + Altileo",
-                value=f"{cost_spot_altileo_annual + saas * nb:,.0f} EUR",
-                delta=f"{delta_spot_alt_pct:+.1f} % vs actuel",
-                delta_color="inverse"
-            )
+            st.plotly_chart(fig_profile, use_container_width=True, config={'displaylogo': False, 'modeBarButtonsToRemove': ['lasso2d', 'select2d']})
 
-        st.divider()
+            # --- Simulation jour par jour ---
+            daily_results = []
+            for date_val, day_df in spot_df.groupby('date'):
+                prices_day = day_df.set_index('hour')['price_eur_mwh'].reindex(range(24), fill_value=spot_avg_overall)
 
-        kpi4, kpi5, kpi6 = st.columns(3)
-        with kpi4:
-            st.metric(
-                label="Gain Altileo sur Spot",
-                value=f"{gain_spot_net:,.0f} EUR / an",
-                delta=f"Brut : {gain_spot_brut:,.0f} EUR",
-                delta_color="off"
-            )
-        with kpi5:
-            st.metric(
-                label="Gain total vs contrat actuel",
-                value=f"{gain_vs_actuel:,.0f} EUR / an",
-                delta=f"Spot + Altileo combine",
-                delta_color="off"
-            )
-        with kpi6:
-            st.metric(
-                label="kWh economises",
-                value=f"{kwh_spot_saved_annual:,.0f} kWh / an",
-                delta=f"{(kwh_spot_saved_annual * 0.05) / 1000:,.1f} t CO2",
-                delta_color="off"
-            )
+                # Les N heures les plus cheres de CE jour
+                delest_hours_day = prices_day.nlargest(spot_delest_h).index.tolist()
 
-        # --- Graphique comparatif barres ---
-        st.divider()
-        st.markdown('<p class="section-title">Comparaison visuelle des scenarios</p>', unsafe_allow_html=True)
+                cost_base_day = 0.0
+                cost_altileo_day = 0.0
+                energy_removed_day = 0.0
 
-        fig_compare = go.Figure()
-        scenarios = ["Contrat actuel\n(HC/HP)", "Spot seul\n(sans Altileo)", "Spot + Altileo"]
-        values = [f_ref_an, cost_spot_annual, cost_spot_altileo_annual + saas * nb]
-        colors_bar = ['#8DA0B3', '#C4652B', '#2D8C5A']
+                for hh in range(24):
+                    price_kwh = (prices_day[hh] + spot_margin) / 1000.0 + tarifs['turpe'] + tarifs['taxes']
+                    energy = all_hourly[hh]
+                    cost_base_day += energy * price_kwh
 
-        fig_compare.add_trace(go.Bar(
-            x=scenarios,
-            y=values,
-            marker_color=colors_bar,
-            text=[f"{v:,.0f} EUR" for v in values],
-            textposition='outside',
-            hovertemplate='<b>%{x}</b><br>%{y:,.0f} EUR/an<extra></extra>'
-        ))
+                    if hh in delest_hours_day:
+                        energy_kept = energy * (1 - comp_ratio[hh])
+                        cost_altileo_day += energy_kept * price_kwh
+                        energy_removed_day += energy * comp_ratio[hh]
+                    else:
+                        cost_altileo_day += energy * price_kwh
 
-        fig_compare.update_layout(
-            margin=dict(l=10, r=10, t=20, b=10),
-            plot_bgcolor='rgba(0,0,0,0)',
-            paper_bgcolor='rgba(0,0,0,0)',
-            font=dict(family="Inter", size=11),
-            yaxis=dict(
-                title="EUR / an (HT)",
-                showgrid=True,
-                gridcolor='rgba(136, 152, 168, 0.2)',
-            ),
-            xaxis=dict(showgrid=False),
-            showlegend=False,
-            height=400
-        )
+                # Rattrapage thermique
+                energy_rattrapage = energy_removed_day * r * (1.0 - cop) * (1.0 + sec)
+                available_h = [hh for hh in range(24) if hh not in delest_hours_day]
+                ratt_per_h = energy_rattrapage / len(available_h) if available_h else 0
+                for hh in available_h:
+                    price_kwh = (prices_day[hh] + spot_margin) / 1000.0 + tarifs['turpe'] + tarifs['taxes']
+                    cost_altileo_day += ratt_per_h * price_kwh
 
-        st.plotly_chart(fig_compare, use_container_width=True, config={
-            'displaylogo': False,
-            'modeBarButtonsToRemove': ['lasso2d', 'select2d']
-        })
-
-        # --- Detail horaire ---
-        with st.expander("Detail horaire de la simulation"):
-            detail_data = []
-            for h in range(24):
-                is_delest = h in selected_hours
-                energy_base = all_hourly[h]
-                if is_delest:
-                    energy_after = all_hourly[h] * (1 - comp_ratio[h])
-                else:
-                    energy_after = all_hourly[h] + rattrapage_per_hour
-                cost_before = energy_base * total_price_kwh[h]
-                cost_after = energy_after * total_price_kwh[h]
-
-                detail_data.append({
-                    'Heure': f"{h:02d}h",
-                    'Prix Spot (EUR/MWh)': round(spot_prices[h], 1),
-                    'kW avant': round(energy_base, 2),
-                    'kW apres': round(energy_after, 2),
-                    'Cout avant (EUR)': round(cost_before, 2),
-                    'Cout apres (EUR)': round(cost_after, 2),
-                    'Statut': 'DELESTE' if is_delest else 'Normal'
+                daily_results.append({
+                    'date': date_val,
+                    'cost_spot': cost_base_day,
+                    'cost_altileo': cost_altileo_day,
+                    'avg_price': prices_day.mean(),
+                    'max_price': prices_day.max(),
+                    'min_price': prices_day.min(),
+                    'kwh_saved': energy_removed_day - energy_rattrapage
                 })
 
-            st.dataframe(pd.DataFrame(detail_data), use_container_width=True, hide_index=True)
+            res_df = pd.DataFrame(daily_results)
+            res_df['date'] = pd.to_datetime(res_df['date'])
+            res_df['gain_jour'] = res_df['cost_spot'] - res_df['cost_altileo']
+
+            # --- Annualisation ---
+            total_days = len(res_df)
+            annual_factor = 365.0 / total_days if total_days > 0 else 1
+
+            cost_spot_annual = res_df['cost_spot'].sum() * nb * annual_factor
+            cost_altileo_annual = res_df['cost_altileo'].sum() * nb * annual_factor
+            kwh_saved_annual = res_df['kwh_saved'].sum() * nb * annual_factor
+
+            gain_spot_brut = cost_spot_annual - cost_altileo_annual
+            gain_spot_net = gain_spot_brut - (saas * nb)
+            gain_vs_actuel = f_ref_an - (cost_altileo_annual + saas * nb)
+
+            # --- KPIs ---
+            st.divider()
+            st.markdown('<p class="section-title">Comparaison des 3 scenarios (annuel HT)</p>', unsafe_allow_html=True)
+
+            kpi1, kpi2, kpi3 = st.columns(3)
+            with kpi1:
+                st.metric(label="Contrat actuel (HC/HP)", value=f"{f_ref_an:,.0f} EUR", delta="Reference", delta_color="off")
+            with kpi2:
+                d_pct = ((cost_spot_annual - f_ref_an) / f_ref_an * 100) if f_ref_an > 0 else 0
+                st.metric(label="Spot SANS Altileo", value=f"{cost_spot_annual:,.0f} EUR", delta=f"{d_pct:+.1f} % vs actuel", delta_color="inverse")
+            with kpi3:
+                d_pct2 = ((cost_altileo_annual + saas * nb - f_ref_an) / f_ref_an * 100) if f_ref_an > 0 else 0
+                st.metric(label="Spot + Altileo", value=f"{cost_altileo_annual + saas * nb:,.0f} EUR", delta=f"{d_pct2:+.1f} % vs actuel", delta_color="inverse")
+
+            st.divider()
+            kpi4, kpi5, kpi6 = st.columns(3)
+            with kpi4:
+                st.metric(label="Gain Altileo sur Spot", value=f"{gain_spot_net:,.0f} EUR / an", delta=f"Brut : {gain_spot_brut:,.0f} EUR", delta_color="off")
+            with kpi5:
+                st.metric(label="Gain total vs contrat actuel", value=f"{gain_vs_actuel:,.0f} EUR / an", delta="Spot + Altileo combine", delta_color="off")
+            with kpi6:
+                st.metric(label="kWh economises", value=f"{kwh_saved_annual:,.0f} kWh / an", delta=f"{(kwh_saved_annual * 0.05) / 1000:,.1f} t CO2", delta_color="off")
+
+            # --- Graphique evolution prix spot jour par jour ---
+            st.divider()
+            st.markdown('<p class="section-title">Evolution du prix Spot moyen journalier</p>', unsafe_allow_html=True)
+
+            fig_evo = go.Figure()
+            fig_evo.add_trace(go.Scatter(
+                x=res_df['date'], y=res_df['avg_price'],
+                mode='lines', name='Prix moyen',
+                line=dict(color='#1B3A5C', width=1.5),
+                hovertemplate='%{x|%d/%m/%Y}<br>Moy : %{y:.1f} EUR/MWh<extra></extra>'
+            ))
+            fig_evo.add_trace(go.Scatter(
+                x=res_df['date'], y=res_df['max_price'],
+                mode='lines', name='Prix max',
+                line=dict(color='#E74C3C', width=1, dash='dot'),
+                hovertemplate='%{x|%d/%m/%Y}<br>Max : %{y:.1f} EUR/MWh<extra></extra>'
+            ))
+            fig_evo.add_trace(go.Scatter(
+                x=res_df['date'], y=res_df['min_price'],
+                mode='lines', name='Prix min',
+                line=dict(color='#2D8C5A', width=1, dash='dot'),
+                hovertemplate='%{x|%d/%m/%Y}<br>Min : %{y:.1f} EUR/MWh<extra></extra>'
+            ))
+            fig_evo.update_layout(
+                margin=dict(l=10, r=10, t=10, b=10),
+                plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)',
+                font=dict(family="Inter", size=10),
+                yaxis=dict(title="EUR / MWh", showgrid=True, gridcolor='rgba(136,152,168,0.2)'),
+                xaxis=dict(showgrid=False),
+                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+                height=350
+            )
+            st.plotly_chart(fig_evo, use_container_width=True, config={'displaylogo': False, 'modeBarButtonsToRemove': ['lasso2d', 'select2d']})
+
+            # --- Graphique comparatif barres annuelles ---
+            st.divider()
+            st.markdown('<p class="section-title">Comparaison visuelle des scenarios</p>', unsafe_allow_html=True)
+
+            fig_compare = go.Figure()
+            scenarios = ["Contrat actuel\n(HC/HP)", "Spot seul\n(sans Altileo)", "Spot + Altileo"]
+            values = [f_ref_an, cost_spot_annual, cost_altileo_annual + saas * nb]
+            colors_bar = ['#8DA0B3', '#C4652B', '#2D8C5A']
+            fig_compare.add_trace(go.Bar(
+                x=scenarios, y=values, marker_color=colors_bar,
+                text=[f"{v:,.0f} EUR" for v in values], textposition='outside',
+                hovertemplate='<b>%{x}</b><br>%{y:,.0f} EUR/an<extra></extra>'
+            ))
+            fig_compare.update_layout(
+                margin=dict(l=10, r=10, t=20, b=10),
+                plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)',
+                font=dict(family="Inter", size=11),
+                yaxis=dict(title="EUR / an (HT)", showgrid=True, gridcolor='rgba(136,152,168,0.2)'),
+                xaxis=dict(showgrid=False), showlegend=False, height=400
+            )
+            st.plotly_chart(fig_compare, use_container_width=True, config={'displaylogo': False, 'modeBarButtonsToRemove': ['lasso2d', 'select2d']})
+
+            # --- Bilan mensuel ---
+            with st.expander("Detail mensuel de la simulation"):
+                res_df['mois'] = res_df['date'].dt.to_period('M').astype(str)
+                monthly = res_df.groupby('mois').agg(
+                    jours=('date', 'count'),
+                    prix_moyen=('avg_price', 'mean'),
+                    cout_spot=('cost_spot', 'sum'),
+                    cout_altileo=('cost_altileo', 'sum'),
+                    kwh_eco=('kwh_saved', 'sum'),
+                    gain=('gain_jour', 'sum')
+                ).reset_index()
+                monthly['cout_spot'] = monthly['cout_spot'] * nb
+                monthly['cout_altileo'] = monthly['cout_altileo'] * nb
+                monthly['kwh_eco'] = monthly['kwh_eco'] * nb
+                monthly['gain'] = monthly['gain'] * nb
+                monthly.columns = ['Mois', 'Jours', 'Prix moy (EUR/MWh)', 'Spot seul (EUR)', 'Spot+Altileo (EUR)', 'kWh eco.', 'Gain Altileo (EUR)']
+                for c in ['Prix moy (EUR/MWh)', 'Spot seul (EUR)', 'Spot+Altileo (EUR)', 'kWh eco.', 'Gain Altileo (EUR)']:
+                    monthly[c] = monthly[c].round(1)
+                st.dataframe(monthly, use_container_width=True, hide_index=True)
