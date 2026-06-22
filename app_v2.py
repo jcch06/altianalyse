@@ -519,7 +519,7 @@ with st.sidebar:
 
     # --- Simulation Spot ---
     st.markdown("### Simulation Spot")
-    spot_delest_h = st.slider("Heures delestees / jour", 1, 12, 6)
+    spot_delest_h = st.slider("Heures delestees / jour", 0, 12, 6)
     spot_margin = st.number_input("Marge fournisseur (EUR/MWh)", value=5.0, step=1.0)
     spot_days = st.slider("Jours d'historique Nord Pool", 30, 180, 90, step=10)
 
