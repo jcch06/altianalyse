@@ -1039,14 +1039,25 @@ with tab_spot:
         # --- Profil de consommation du client ---
         df_spot_calc = df_proc.copy()
         df_spot_calc['heure'] = df_spot_calc['timestamp'].dt.hour
-        comp_hourly_raw = df_spot_calc[df_spot_calc['categorie_conso'] == 'compresseur']\
+        df_spot_calc['mois'] = df_spot_calc['timestamp'].dt.month
+        
+        # Profil Global (Fallback)
+        comp_global = df_spot_calc[df_spot_calc['categorie_conso'] == 'compresseur']\
             .groupby('heure')['puissance_kw'].mean().reindex(range(24), fill_value=0)
-        other_hourly_raw = df_spot_calc[df_spot_calc['categorie_conso'] != 'compresseur']\
+        other_global = df_spot_calc[df_spot_calc['categorie_conso'] != 'compresseur']\
             .groupby('heure')['puissance_kw'].mean().reindex(range(24), fill_value=0)
-        all_hourly = comp_hourly_raw + other_hourly_raw
+        global_all_hourly = comp_global + other_global
 
-        total_raw = comp_hourly_raw + other_hourly_raw
-        comp_ratio = (comp_hourly_raw / total_raw).fillna(0)
+        # Profils Mensuels
+        monthly_profiles = {}
+        for mois in range(1, 13):
+            df_mois = df_spot_calc[df_spot_calc['mois'] == mois]
+            if not df_mois.empty:
+                comp_m = df_mois[df_mois['categorie_conso'] == 'compresseur']\
+                    .groupby('heure')['puissance_kw'].mean().reindex(range(24), fill_value=0)
+                other_m = df_mois[df_mois['categorie_conso'] != 'compresseur']\
+                    .groupby('heure')['puissance_kw'].mean().reindex(range(24), fill_value=0)
+                monthly_profiles[mois] = comp_m + other_m
 
         # --- Chargement des prix Nord Pool ---
         spot_end_date = date.today() - timedelta(days=1)
@@ -1099,6 +1110,12 @@ with tab_spot:
             for date_val, day_df in spot_df.groupby('date'):
                 prices_day = day_df.set_index('hour')['price_eur_mwh'].reindex(range(24), fill_value=spot_avg_overall)
 
+                try:
+                    current_month = pd.to_datetime(date_val).month
+                except:
+                    current_month = 1
+                current_all_hourly = monthly_profiles.get(current_month, global_all_hourly)
+
                 # Recherche gloutonne des N heures les plus rentables a delester
                 # en prenant en compte le profil de consommation et le cout du rattrapage
                 delest_hours_day = []
@@ -1110,7 +1127,7 @@ with tab_spot:
                             continue
                         if test_h not in delest_hours_day:
                             test_shed = delest_hours_day + [test_h]
-                            e_rem = sum(all_hourly[hh] for hh in test_shed)
+                            e_rem = sum(current_all_hourly[hh] for hh in test_shed)
                             e_rat = e_rem * r * (1.0 - cop) * (1.0 + sec)
                             avail = [hh for hh in range(24) if hh not in test_shed]
                             rat_per_h = e_rat / len(avail) if avail else 0
@@ -1121,7 +1138,7 @@ with tab_spot:
                                 if hh in test_shed:
                                     c_test += 0
                                 else:
-                                    c_test += (all_hourly[hh] + rat_per_h) * p_kwh
+                                    c_test += (current_all_hourly[hh] + rat_per_h) * p_kwh
                                     
                             if c_test < best_cost:
                                 best_cost = c_test
@@ -1135,7 +1152,7 @@ with tab_spot:
 
                 for hh in range(24):
                     price_kwh = (prices_day[hh] + spot_margin) / 1000.0 + tarifs['turpe'] + tarifs['taxes']
-                    energy = all_hourly[hh]
+                    energy = current_all_hourly[hh]
                     cost_base_day += energy * price_kwh
 
                     if hh in delest_hours_day:
@@ -1174,7 +1191,7 @@ with tab_spot:
                     else:
                         t_base = tarifs['hp_ete'] if type_h == 'HP' else tarifs['hc_ete']
                     p_kwh = t_base + tarifs['turpe'] + tarifs['taxes']
-                    cost_hchp_day += all_hourly[hh] * p_kwh
+                    cost_hchp_day += current_all_hourly[hh] * p_kwh
 
                 daily_results.append({
                     'date': date_val,
