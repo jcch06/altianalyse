@@ -1107,7 +1107,7 @@ with tab_spot:
                     for test_h in range(24):
                         if test_h not in delest_hours_day:
                             test_shed = delest_hours_day + [test_h]
-                            e_rem = sum(all_hourly[hh] * comp_ratio[hh] for hh in test_shed)
+                            e_rem = sum(all_hourly[hh] for hh in test_shed)
                             e_rat = e_rem * r * (1.0 - cop) * (1.0 + sec)
                             avail = [hh for hh in range(24) if hh not in test_shed]
                             rat_per_h = e_rat / len(avail) if avail else 0
@@ -1116,7 +1116,7 @@ with tab_spot:
                             for hh in range(24):
                                 p_kwh = (prices_day[hh] + spot_margin) / 1000.0 + tarifs['turpe'] + tarifs['taxes']
                                 if hh in test_shed:
-                                    c_test += all_hourly[hh] * (1 - comp_ratio[hh]) * p_kwh
+                                    c_test += 0
                                 else:
                                     c_test += (all_hourly[hh] + rat_per_h) * p_kwh
                                     
@@ -1136,9 +1136,7 @@ with tab_spot:
                     cost_base_day += energy * price_kwh
 
                     if hh in delest_hours_day:
-                        energy_kept = energy * (1 - comp_ratio[hh])
-                        cost_altileo_day += energy_kept * price_kwh
-                        energy_removed_day += energy * comp_ratio[hh]
+                        energy_removed_day += energy
                     else:
                         cost_altileo_day += energy * price_kwh
 
