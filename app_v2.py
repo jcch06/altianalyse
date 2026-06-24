@@ -1039,12 +1039,12 @@ with tab_spot:
         # --- Profil de consommation du client ---
         df_spot_calc = df_proc.copy()
         df_spot_calc['heure'] = df_spot_calc['timestamp'].dt.hour
-        all_hourly = df_spot_calc.groupby('heure')['puissance_kw'].mean().reindex(range(24), fill_value=0)
-
         comp_hourly_raw = df_spot_calc[df_spot_calc['categorie_conso'] == 'compresseur']\
             .groupby('heure')['puissance_kw'].mean().reindex(range(24), fill_value=0)
         other_hourly_raw = df_spot_calc[df_spot_calc['categorie_conso'] != 'compresseur']\
             .groupby('heure')['puissance_kw'].mean().reindex(range(24), fill_value=0)
+        all_hourly = comp_hourly_raw + other_hourly_raw
+
         total_raw = comp_hourly_raw + other_hourly_raw
         comp_ratio = (comp_hourly_raw / total_raw).fillna(0)
 
@@ -1066,8 +1066,9 @@ with tab_spot:
             # --- Profil horaire moyen (depuis les vraies donnees) ---
             avg_profile = spot_df.groupby('hour')['price_eur_mwh'].mean().reindex(range(24), fill_value=0)
 
-            # Identifier les heures les plus cheres en moyenne pour le graphique
-            top_hours_avg = avg_profile.nlargest(spot_delest_h).index.tolist()
+            # Identifier les heures les plus cheres en moyenne pour le graphique (hors 2h-12h)
+            valid_hours = [h for h in range(24) if not (2 <= h < 12)]
+            top_hours_avg = avg_profile.loc[valid_hours].nlargest(spot_delest_h).index.tolist()
 
             bar_colors = ['#E74C3C' if hh in top_hours_avg else '#1B3A5C' for hh in range(24)]
 
@@ -1105,6 +1106,8 @@ with tab_spot:
                     best_h = -1
                     best_cost = float('inf')
                     for test_h in range(24):
+                        if 2 <= test_h < 12:
+                            continue
                         if test_h not in delest_hours_day:
                             test_shed = delest_hours_day + [test_h]
                             e_rem = sum(all_hourly[hh] for hh in test_shed)
