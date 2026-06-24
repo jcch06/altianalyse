@@ -1298,27 +1298,49 @@ with tab_spot:
 
             # --- Bilan mensuel ---
             st.divider()
-            with st.expander("Detail mensuel de la simulation"):
-                res_df['mois'] = res_df['date'].dt.to_period('M').astype(str)
-                monthly = res_df.groupby('mois').agg(
-                    jours=('date', 'count'),
-                    prix_moyen=('avg_price', 'mean'),
-                    cout_hchp=('cost_hchp', 'sum'),
-                    cout_spot=('cost_spot', 'sum'),
-                    cout_altileo=('cost_altileo', 'sum'),
-                    kwh_eco=('kwh_saved', 'sum'),
-                    gain=('gain_jour', 'sum'),
-                    temp_max=('max_temp', 'max')
-                ).reset_index()
-                monthly['cout_hchp'] = monthly['cout_hchp'] * nb
-                monthly['cout_spot'] = monthly['cout_spot'] * nb
-                monthly['cout_altileo'] = monthly['cout_altileo'] * nb
-                monthly['kwh_eco'] = monthly['kwh_eco'] * nb
-                monthly['gain'] = monthly['gain'] * nb
-                monthly.columns = ['Mois', 'Jours', 'Prix moy (EUR/MWh)', 'HC/HP de base (EUR)', 'Spot seul (EUR)', 'Spot+Altileo (EUR)', 'kWh eco.', 'Gain Altileo (EUR)', 'Temp Max (C)']
-                for c in ['Prix moy (EUR/MWh)', 'HC/HP de base (EUR)', 'Spot seul (EUR)', 'Spot+Altileo (EUR)', 'kWh eco.', 'Gain Altileo (EUR)', 'Temp Max (C)']:
-                    monthly[c] = monthly[c].round(1)
-                st.dataframe(monthly, use_container_width=True, hide_index=True)
+            st.divider()
+            st.markdown('<p class="section-title">Bilan Mensuel de la Simulation</p>', unsafe_allow_html=True)
+            res_df['mois'] = res_df['date'].dt.to_period('M').astype(str)
+            monthly = res_df.groupby('mois').agg(
+                jours=('date', 'count'),
+                prix_moyen=('avg_price', 'mean'),
+                cout_hchp=('cost_hchp', 'sum'),
+                cout_spot=('cost_spot', 'sum'),
+                cout_altileo=('cost_altileo', 'sum'),
+                kwh_eco=('kwh_saved', 'sum'),
+                gain=('gain_jour', 'sum'),
+                temp_max=('max_temp', 'max')
+            ).reset_index()
+            monthly['cout_hchp'] = monthly['cout_hchp'] * nb
+            monthly['cout_spot'] = monthly['cout_spot'] * nb
+            monthly['cout_altileo'] = monthly['cout_altileo'] * nb
+            monthly['kwh_eco'] = monthly['kwh_eco'] * nb
+            monthly['gain'] = monthly['gain'] * nb
+            monthly.columns = ['Mois', 'Jours', 'Prix moy (EUR/MWh)', 'HC/HP de base (EUR)', 'Spot seul (EUR)', 'Spot+Altileo (EUR)', 'kWh eco.', 'Gain Altileo (EUR)', 'Temp Max (C)']
+            for c in ['Prix moy (EUR/MWh)', 'HC/HP de base (EUR)', 'Spot seul (EUR)', 'Spot+Altileo (EUR)', 'kWh eco.', 'Gain Altileo (EUR)', 'Temp Max (C)']:
+                monthly[c] = monthly[c].round(1)
+            
+            # --- Graphique Barres Mensuel ---
+            fig_monthly = go.Figure()
+            fig_monthly.add_trace(go.Bar(
+                x=monthly['Mois'], y=monthly['Spot seul (EUR)'],
+                name='Spot SANS Altileo', marker_color='#E74C3C'
+            ))
+            fig_monthly.add_trace(go.Bar(
+                x=monthly['Mois'], y=monthly['Spot+Altileo (EUR)'],
+                name='Spot AVEC Altileo', marker_color='#2D8C5A'
+            ))
+            fig_monthly.update_layout(
+                barmode='group',
+                margin=dict(l=10, r=10, t=10, b=10),
+                plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)',
+                font=dict(family="Inter", size=10),
+                yaxis=dict(title="Coût Mensuel (EUR)", showgrid=True, gridcolor='rgba(136,152,168,0.2)'),
+                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+            )
+            st.plotly_chart(fig_monthly, use_container_width=True, config={'displaylogo': False})
+            
+            st.dataframe(monthly, use_container_width=True, hide_index=True)
 
             # --- Figures pour l'onglet graphique ---
             fig_evo = go.Figure()
