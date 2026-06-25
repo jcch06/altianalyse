@@ -609,12 +609,16 @@ if analysis_run:
             noms_mois = {1: "Janvier", 2: "Fevrier", 3: "Mars", 4: "Avril", 5: "Mai", 6: "Juin", 7: "Juillet", 8: "Aout", 9: "Septembre", 10: "Octobre", 11: "Novembre", 12: "Decembre"}
             
             hchp_monthly_results = []
-            f_ref_an = 0.0
-            k_ref_an = 0.0
-            gain_an_brut = 0.0
-            k_sauves_an = 0.0
+            f_ref_tot = 0.0
+            k_ref_tot = 0.0
+            gain_tot_brut = 0.0
+            k_sauves_tot = 0.0
 
-            for m in range(1, 13):
+            mois_dispos = sorted(monthly_profiles.keys())
+            if not mois_dispos:
+                mois_dispos = [date.today().month]
+
+            for m in mois_dispos:
                 jours = jours_par_mois[m]
                 saison = 'hiver' if m in [11, 12, 1, 2, 3] else 'ete'
                 prof = monthly_profiles.get(m, global_all_hourly)
@@ -649,12 +653,12 @@ if analysis_run:
                 total_ht_sim = (f_hp_sim + f_hc_sim + turpe_sim + taxes_sim) - (abo * nb)
                 gain_mois = total_ht_base - total_ht_sim
                 
-                f_ref_an += total_ht_base
-                k_ref_an += (k_hp_mois + k_hc_mois)
-                gain_an_brut += gain_mois
-                k_sauves_an += (k_effaces - k_rattrapes)
+                f_ref_tot += total_ht_base
+                k_ref_tot += (k_hp_mois + k_hc_mois)
+                gain_tot_brut += gain_mois
+                k_sauves_tot += (k_effaces - k_rattrapes)
                 
-                saas_mois = (saas * nb) / 12.0
+                saas_mois = (saas * nb) * (jours / 365.0)
                 
                 hchp_monthly_results.append({
                     'mois_num': m,
@@ -666,10 +670,14 @@ if analysis_run:
                     'gain_net': gain_mois - saas_mois
                 })
 
-            gain_an_net = gain_an_brut - (saas * nb)
-            pct = (gain_an_brut / f_ref_an * 100) if f_ref_an > 0 else 0
+            jours_totaux = sum(jours_par_mois[m] for m in mois_dispos)
+            saas_tot = (saas * nb) * (jours_totaux / 365.0)
+            gain_tot_net = gain_tot_brut - saas_tot
+            pct = (gain_tot_brut / f_ref_tot * 100) if f_ref_tot > 0 else 0
+            
             i_net = max(0, pr * nb - cee)
-            roi = (i_net / gain_an_net * 12) if gain_an_net > 0 else 0
+            gain_moyen_mensuel = (gain_tot_net / jours_totaux) * (365.0 / 12.0) if jours_totaux > 0 else 0
+            roi = (i_net / gain_moyen_mensuel) if gain_moyen_mensuel > 0 else 0
 
             # Calcul thermique theorique
             derive_max_hchp = h * pente_rechauffement
@@ -776,45 +784,8 @@ with tab_dashboard:
     if not analysis_run:
         st.info("Configurez les parametres dans le panneau lateral puis lancez l'analyse.")
     else:
-        st.markdown('<p class="section-title">Synthese annuelle du projet</p>', unsafe_allow_html=True)
-
-        col1, col2, col3, col4, col5 = st.columns(5)
-        with col1:
-            st.metric(
-                label="Facture de reference",
-                value=f"{f_ref_an:,.0f} EUR",
-                delta=f"{k_ref_an:,.0f} kWh",
-                delta_color="off"
-            )
-        with col2:
-            st.metric(
-                label="Gain Brut d'exploit.",
-                value=f"{gain_an_brut:,.0f} EUR",
-                delta="Avant abo SaaS",
-                delta_color="off"
-            )
-        with col3:
-            st.metric(
-                label="Gain Net d'exploit.",
-                value=f"{gain_an_net:,.0f} EUR",
-                delta=f"-{pct:.1f} % (brut)"
-            )
-        with col4:
-            st.metric(
-                label="Impact environnemental",
-                value=f"{(k_sauves_an * 0.05) / 1000:,.1f} t",
-                delta="CO2 evite"
-            )
-        with col5:
-            st.metric(
-                label="Retour investissement",
-                value=f"{roi:.1f} mois",
-                delta=f"soit {roi/12:.1f} ans",
-                delta_color="off"
-            )
-
-        st.divider()
-        st.markdown('<p class="section-title">Analyse Mensuelle (Contrat HC/HP) sur 12 mois</p>', unsafe_allow_html=True)
+        nb_mois = len(mois_dispos)
+        st.markdown(f'<p class="section-title">Detail Mensuel ({nb_mois} mois etudies)</p>', unsafe_allow_html=True)
         
         for res in hchp_monthly_results:
             st.markdown(f"**Bilan {res['mois_nom']} ({res['jours']} jours - Tarif {res['saison'].capitalize()})**")
@@ -834,6 +805,44 @@ with tab_dashboard:
             with c4:
                 st.metric("Gain Net Mensuel", f"{g_net:,.0f} EUR")
             st.write("")
+
+        st.divider()
+        st.markdown(f'<p class="section-title">Synthese globale sur la periode etudiee ({jours_totaux} jours)</p>', unsafe_allow_html=True)
+
+        col1, col2, col3, col4, col5 = st.columns(5)
+        with col1:
+            st.metric(
+                label="Facture de reference",
+                value=f"{f_ref_tot:,.0f} EUR",
+                delta=f"{k_ref_tot:,.0f} kWh",
+                delta_color="off"
+            )
+        with col2:
+            st.metric(
+                label="Gain Brut d'exploit.",
+                value=f"{gain_tot_brut:,.0f} EUR",
+                delta="Avant abo SaaS",
+                delta_color="off"
+            )
+        with col3:
+            st.metric(
+                label="Gain Net d'exploit.",
+                value=f"{gain_tot_net:,.0f} EUR",
+                delta=f"-{pct:.1f} % (brut)"
+            )
+        with col4:
+            st.metric(
+                label="Impact environnemental",
+                value=f"{(k_sauves_tot * 0.05) / 1000:,.1f} t",
+                delta="CO2 evite"
+            )
+        with col5:
+            st.metric(
+                label="Retour investissement",
+                value=f"{roi:.1f} mois",
+                delta=f"soit {roi/12:.1f} ans",
+                delta_color="off"
+            )
 
         st.divider()
         st.markdown('<p class="section-title">Parametres de modelisation retenus</p>', unsafe_allow_html=True)
