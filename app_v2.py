@@ -1209,49 +1209,80 @@ with tab_spot:
             res_df['date'] = pd.to_datetime(res_df['date'])
             res_df['gain_jour'] = res_df['cost_spot'] - res_df['cost_altileo']
 
-            # --- Annualisation ---
-            total_days = len(res_df)
-            annual_factor = 365.0 / total_days if total_days > 0 else 1
+            # --- Bilan par mois ---
+            res_df['mois_str'] = res_df['date'].dt.to_period('M').astype(str)
+            monthly = res_df.groupby('mois_str').agg(
+                jours=('date', 'count'),
+                prix_moyen=('avg_price', 'mean'),
+                cout_hchp=('cost_hchp', 'sum'),
+                cout_spot=('cost_spot', 'sum'),
+                cout_altileo=('cost_altileo', 'sum'),
+                kwh_eco=('kwh_saved', 'sum'),
+                gain=('gain_jour', 'sum'),
+                temp_max=('max_temp', 'max')
+            ).reset_index()
 
-            cost_hchp_annual = res_df['cost_hchp'].sum() * nb * annual_factor
-            cost_spot_annual = res_df['cost_spot'].sum() * nb * annual_factor
-            cost_altileo_annual = res_df['cost_altileo'].sum() * nb * annual_factor
-            kwh_saved_annual = res_df['kwh_saved'].sum() * nb * annual_factor
+            # Application du nb de chambres
+            for col in ['cout_hchp', 'cout_spot', 'cout_altileo', 'kwh_eco', 'gain']:
+                monthly[col] = monthly[col] * nb
+                
+            # Totaux de la periode
+            total_days = res_df['date'].nunique()
+            cost_hchp_tot = res_df['cost_hchp'].sum() * nb
+            cost_spot_tot = res_df['cost_spot'].sum() * nb
+            cost_altileo_tot = res_df['cost_altileo'].sum() * nb
+            kwh_saved_tot = res_df['kwh_saved'].sum() * nb
+            gain_spot_brut = cost_spot_tot - cost_altileo_tot
+            
+            # Prorata SaaS sur la periode analysee
+            saas_periode = (saas * nb) * (total_days / 365.0)
+            gain_spot_net = gain_spot_brut - saas_periode
+            gain_vs_actuel = cost_hchp_tot - (cost_altileo_tot + saas_periode)
+            max_temp_spot = res_df['max_temp'].max()
 
-            gain_spot_brut = cost_spot_annual - cost_altileo_annual
-            gain_spot_net = gain_spot_brut - (saas * nb)
-            gain_vs_actuel = cost_hchp_annual - (cost_altileo_annual + saas * nb)
-            max_temp_spot_annual = res_df['max_temp'].max()
-
-            # --- KPIs ---
             st.divider()
-            st.markdown('<p class="section-title">Comparaison des 3 scenarios (annuel HT)</p>', unsafe_allow_html=True)
-
-            kpi1, kpi2, kpi3 = st.columns(3)
-            with kpi1:
-                st.metric(label="Contrat actuel (HC/HP)", value=f"{cost_hchp_annual:,.0f} EUR", delta="Reference", delta_color="off")
-            with kpi2:
-                d_pct = ((cost_spot_annual - cost_hchp_annual) / cost_hchp_annual * 100) if cost_hchp_annual > 0 else 0
-                st.metric(label="Spot SANS Altileo", value=f"{cost_spot_annual:,.0f} EUR", delta=f"{d_pct:+.1f} % vs actuel", delta_color="inverse")
-            with kpi3:
-                d_pct2 = ((cost_altileo_annual + saas * nb - cost_hchp_annual) / cost_hchp_annual * 100) if cost_hchp_annual > 0 else 0
-                st.metric(label="Spot + Altileo", value=f"{cost_altileo_annual + saas * nb:,.0f} EUR", delta=f"{d_pct2:+.1f} % vs actuel", delta_color="inverse")
+            st.markdown(f'<p class="section-title">Analyse Mensuelle (Donnees reelles sur {total_days} jours)</p>', unsafe_allow_html=True)
+            
+            # Affichage d'une carte par mois
+            for _, row in monthly.iterrows():
+                mois_nom = row['mois_str']
+                j = row['jours']
+                c_hc = row['cout_hchp']
+                c_spot = row['cout_spot']
+                c_alt = row['cout_altileo']
+                saas_mois = (saas * nb) * (j / 365.0)
+                g_net = row['gain'] - saas_mois
+                
+                st.markdown(f"**Bilan {mois_nom} ({j} jours)**")
+                k1, k2, k3, k4 = st.columns(4)
+                with k1:
+                    st.metric(label="HC/HP", value=f"{c_hc:,.0f} EUR")
+                with k2:
+                    d1 = ((c_spot - c_hc)/c_hc*100) if c_hc>0 else 0
+                    st.metric(label="Spot SANS Altileo", value=f"{c_spot:,.0f} EUR", delta=f"{d1:+.1f}% vs HC/HP", delta_color="inverse")
+                with k3:
+                    d2 = ((c_alt + saas_mois - c_hc)/c_hc*100) if c_hc>0 else 0
+                    st.metric(label="Spot AVEC Altileo", value=f"{(c_alt + saas_mois):,.0f} EUR", delta=f"{d2:+.1f}% vs HC/HP", delta_color="inverse")
+                with k4:
+                    st.metric(label="Gain Net Mensuel", value=f"{g_net:,.0f} EUR")
+                st.write("") # spacing
 
             st.divider()
+            st.markdown(f'<p class="section-title">Resume de la periode ({spot_start_date.strftime("%d/%m/%Y")} au {spot_end_date.strftime("%d/%m/%Y")})</p>', unsafe_allow_html=True)
+            
             kpi4, kpi5, kpi6 = st.columns(3)
             with kpi4:
-                st.metric(label="Gain Altileo sur Spot", value=f"{gain_spot_net:,.0f} EUR / an", delta=f"Brut : {gain_spot_brut:,.0f} EUR", delta_color="off")
+                st.metric(label="Gain Net Periode", value=f"{gain_spot_net:,.0f} EUR", delta=f"Brut : {gain_spot_brut:,.0f} EUR", delta_color="off")
             with kpi5:
-                st.metric(label="Gain total vs contrat actuel", value=f"{gain_vs_actuel:,.0f} EUR / an", delta="Spot + Altileo combine", delta_color="off")
+                st.metric(label="Gain vs Contrat Actuel", value=f"{gain_vs_actuel:,.0f} EUR", delta=f"Sur {total_days} jours", delta_color="off")
             with kpi6:
-                st.metric(label="kWh economises", value=f"{kwh_saved_annual:,.0f} kWh / an", delta=f"{(kwh_saved_annual * 0.05) / 1000:,.1f} t CO2", delta_color="off")
+                st.metric(label="kWh economises", value=f"{kwh_saved_tot:,.0f} kWh", delta=f"{(kwh_saved_tot * 0.05) / 1000:,.1f} t CO2", delta_color="off")
 
             st.divider()
-            st.markdown('<p class="section-title">Validation Thermique HACCP (Annuelle Spot)</p>', unsafe_allow_html=True)
-            if max_temp_spot_annual > t_max:
-                st.error(f"⚠️ **RISQUE SANITAIRE** : Sur l'annee, la temperature maximale simulee a atteint **{max_temp_spot_annual:.2f} C**, depassant la limite HACCP de **{t_max:.2f} C**.")
+            if max_temp_spot > t_max:
+                st.error(f"⚠️ **RISQUE SANITAIRE** : Sur la periode, la temperature maximale simulee a atteint **{max_temp_spot:.2f} C**, depassant la limite HACCP de **{t_max:.2f} C**.")
             else:
-                st.success(f"✅ **CONFORME** : La temperature maximale simulee sur l'annee est restee a **{max_temp_spot_annual:.2f} C** (limite: {t_max:.2f} C).")
+                st.success(f"✅ **CONFORME** : La temperature maximale simulee sur la periode est restee a **{max_temp_spot:.2f} C** (limite: {t_max:.2f} C).")
 
             # --- Export PDF Spot ---
             def create_spot_pdf():
@@ -1268,22 +1299,22 @@ with tab_spot:
                 pdf.cell(0, 6, f"Nombre de chambres equipees : {nb}", ln=1)
                 pdf.cell(0, 6, f"Delestage programme (Spot) : {spot_delest_h} heures/jour", ln=1)
                 pdf.cell(0, 6, f"Marge fournisseur Spot : {spot_margin} EUR/MWh", ln=1)
-                pdf.cell(0, 6, f"Historique de prix charge : {n_days_loaded} jours (Moyenne : {spot_avg_overall:.1f} EUR/MWh)", ln=1)
+                pdf.cell(0, 6, f"Periode etudiee : {total_days} jours (Moyenne : {spot_avg_overall:.1f} EUR/MWh)", ln=1)
                 
                 pdf.ln(5)
                 pdf.set_font("Arial", "B", 14)
                 pdf.set_text_color(27, 58, 92)
-                pdf.cell(0, 10, "Resultats Financiers (HT)", ln=1)
+                pdf.cell(0, 10, f"Resultats Financiers sur la periode de {total_days} jours (HT)", ln=1)
                 
                 pdf.set_font("Arial", "", 11)
                 pdf.set_text_color(0, 0, 0)
-                pdf.cell(0, 6, f"Facture contrat actuel (HC/HP) : {cost_hchp_annual:,.0f} EUR/an", ln=1)
-                pdf.cell(0, 6, f"Facture Spot SANS Altileo : {cost_spot_annual:,.0f} EUR/an", ln=1)
-                pdf.cell(0, 6, f"Facture Spot AVEC Altileo : {(cost_altileo_annual + saas * nb):,.0f} EUR/an", ln=1)
-                pdf.cell(0, 6, f"Gain Altileo sur Spot : {gain_spot_net:,.0f} EUR/an (Brut : {gain_spot_brut:,.0f} EUR)", ln=1)
-                pdf.cell(0, 6, f"Gain total vs contrat actuel : {gain_vs_actuel:,.0f} EUR/an", ln=1)
-                pdf.cell(0, 6, f"Impact carbone : {(kwh_saved_annual * 0.05) / 1000:,.1f} tonnes de CO2 evitees/an", ln=1)
-                pdf.cell(0, 6, f"Validation HACCP : {'ECHEC' if max_temp_spot_annual > t_max else 'CONFORME'} (Temp max: {max_temp_spot_annual:.2f} C)", ln=1)
+                pdf.cell(0, 6, f"Facture contrat actuel (HC/HP) : {cost_hchp_tot:,.0f} EUR", ln=1)
+                pdf.cell(0, 6, f"Facture Spot SANS Altileo : {cost_spot_tot:,.0f} EUR", ln=1)
+                pdf.cell(0, 6, f"Facture Spot AVEC Altileo : {(cost_altileo_tot + saas_periode):,.0f} EUR", ln=1)
+                pdf.cell(0, 6, f"Gain Altileo sur Spot : {gain_spot_net:,.0f} EUR (Brut : {gain_spot_brut:,.0f} EUR)", ln=1)
+                pdf.cell(0, 6, f"Gain total vs contrat actuel : {gain_vs_actuel:,.0f} EUR", ln=1)
+                pdf.cell(0, 6, f"Impact carbone : {(kwh_saved_tot * 0.05) / 1000:,.2f} tonnes de CO2 evitees", ln=1)
+                pdf.cell(0, 6, f"Validation HACCP : {'ECHEC' if max_temp_spot > t_max else 'CONFORME'} (Temp max: {max_temp_spot:.2f} C)", ln=1)
                 
                 return bytes(pdf.output())
 
@@ -1297,29 +1328,13 @@ with tab_spot:
                 type="primary"
             )
 
-            # --- Bilan mensuel ---
+            # --- Graphique Barres Mensuel ---
             st.divider()
-            st.divider()
-            st.markdown('<p class="section-title">Bilan Mensuel de la Simulation</p>', unsafe_allow_html=True)
-            res_df['mois'] = res_df['date'].dt.to_period('M').astype(str)
-            monthly = res_df.groupby('mois').agg(
-                jours=('date', 'count'),
-                prix_moyen=('avg_price', 'mean'),
-                cout_hchp=('cost_hchp', 'sum'),
-                cout_spot=('cost_spot', 'sum'),
-                cout_altileo=('cost_altileo', 'sum'),
-                kwh_eco=('kwh_saved', 'sum'),
-                gain=('gain_jour', 'sum'),
-                temp_max=('max_temp', 'max')
-            ).reset_index()
-            monthly['cout_hchp'] = monthly['cout_hchp'] * nb
-            monthly['cout_spot'] = monthly['cout_spot'] * nb
-            monthly['cout_altileo'] = monthly['cout_altileo'] * nb
-            monthly['kwh_eco'] = monthly['kwh_eco'] * nb
-            monthly['gain'] = monthly['gain'] * nb
-            monthly.columns = ['Mois', 'Jours', 'Prix moy (EUR/MWh)', 'HC/HP de base (EUR)', 'Spot seul (EUR)', 'Spot+Altileo (EUR)', 'kWh eco.', 'Gain Altileo (EUR)', 'Temp Max (C)']
+            st.markdown('<p class="section-title">Evolution Mensuelle de la Facture</p>', unsafe_allow_html=True)
+            monthly_table = monthly.copy()
+            monthly_table.columns = ['Mois', 'Jours', 'Prix moy (EUR/MWh)', 'HC/HP de base (EUR)', 'Spot seul (EUR)', 'Spot+Altileo (EUR)', 'kWh eco.', 'Gain Altileo (EUR)', 'Temp Max (C)']
             for c in ['Prix moy (EUR/MWh)', 'HC/HP de base (EUR)', 'Spot seul (EUR)', 'Spot+Altileo (EUR)', 'kWh eco.', 'Gain Altileo (EUR)', 'Temp Max (C)']:
-                monthly[c] = monthly[c].round(1)
+                monthly_table[c] = monthly_table[c].round(1)
             
             # --- Graphique Barres Mensuel ---
             fig_monthly = go.Figure()
