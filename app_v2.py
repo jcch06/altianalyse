@@ -1213,13 +1213,14 @@ with tab_spot:
             total_days = len(res_df)
             annual_factor = 365.0 / total_days if total_days > 0 else 1
 
+            cost_hchp_annual = res_df['cost_hchp'].sum() * nb * annual_factor
             cost_spot_annual = res_df['cost_spot'].sum() * nb * annual_factor
             cost_altileo_annual = res_df['cost_altileo'].sum() * nb * annual_factor
             kwh_saved_annual = res_df['kwh_saved'].sum() * nb * annual_factor
 
             gain_spot_brut = cost_spot_annual - cost_altileo_annual
             gain_spot_net = gain_spot_brut - (saas * nb)
-            gain_vs_actuel = f_ref_an - (cost_altileo_annual + saas * nb)
+            gain_vs_actuel = cost_hchp_annual - (cost_altileo_annual + saas * nb)
             max_temp_spot_annual = res_df['max_temp'].max()
 
             # --- KPIs ---
@@ -1228,12 +1229,12 @@ with tab_spot:
 
             kpi1, kpi2, kpi3 = st.columns(3)
             with kpi1:
-                st.metric(label="Contrat actuel (HC/HP)", value=f"{f_ref_an:,.0f} EUR", delta="Reference", delta_color="off")
+                st.metric(label="Contrat actuel (HC/HP)", value=f"{cost_hchp_annual:,.0f} EUR", delta="Reference", delta_color="off")
             with kpi2:
-                d_pct = ((cost_spot_annual - f_ref_an) / f_ref_an * 100) if f_ref_an > 0 else 0
+                d_pct = ((cost_spot_annual - cost_hchp_annual) / cost_hchp_annual * 100) if cost_hchp_annual > 0 else 0
                 st.metric(label="Spot SANS Altileo", value=f"{cost_spot_annual:,.0f} EUR", delta=f"{d_pct:+.1f} % vs actuel", delta_color="inverse")
             with kpi3:
-                d_pct2 = ((cost_altileo_annual + saas * nb - f_ref_an) / f_ref_an * 100) if f_ref_an > 0 else 0
+                d_pct2 = ((cost_altileo_annual + saas * nb - cost_hchp_annual) / cost_hchp_annual * 100) if cost_hchp_annual > 0 else 0
                 st.metric(label="Spot + Altileo", value=f"{cost_altileo_annual + saas * nb:,.0f} EUR", delta=f"{d_pct2:+.1f} % vs actuel", delta_color="inverse")
 
             st.divider()
@@ -1276,7 +1277,7 @@ with tab_spot:
                 
                 pdf.set_font("Arial", "", 11)
                 pdf.set_text_color(0, 0, 0)
-                pdf.cell(0, 6, f"Facture contrat actuel (HC/HP) : {f_ref_an:,.0f} EUR/an", ln=1)
+                pdf.cell(0, 6, f"Facture contrat actuel (HC/HP) : {cost_hchp_annual:,.0f} EUR/an", ln=1)
                 pdf.cell(0, 6, f"Facture Spot SANS Altileo : {cost_spot_annual:,.0f} EUR/an", ln=1)
                 pdf.cell(0, 6, f"Facture Spot AVEC Altileo : {(cost_altileo_annual + saas * nb):,.0f} EUR/an", ln=1)
                 pdf.cell(0, 6, f"Gain Altileo sur Spot : {gain_spot_net:,.0f} EUR/an (Brut : {gain_spot_brut:,.0f} EUR)", ln=1)
