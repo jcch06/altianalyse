@@ -1328,13 +1328,23 @@ with tab_spot:
             st.divider()
             st.markdown(f'<p class="section-title">Resume de la periode ({spot_start_date.strftime("%d/%m/%Y")} au {spot_end_date.strftime("%d/%m/%Y")})</p>', unsafe_allow_html=True)
             
-            kpi4, kpi5, kpi6 = st.columns(3)
+            c_hc_tot = cost_hchp_tot
+            c_spot_tot = cost_spot_tot
+            c_alt_tot = cost_altileo_tot + saas_periode
+            
+            kpi1, kpi2, kpi3, kpi4, kpi5 = st.columns(5)
+            with kpi1:
+                st.metric("HC/HP Classique", f"{c_hc_tot:,.0f} EUR", f"Sur {total_days} jours", delta_color="off")
+            with kpi2:
+                d1_tot = ((c_spot_tot - c_hc_tot)/c_hc_tot*100) if c_hc_tot > 0 else 0
+                st.metric("Spot SANS Altileo", f"{c_spot_tot:,.0f} EUR", f"{d1_tot:+.1f}% vs HC/HP", delta_color="inverse")
+            with kpi3:
+                d2_tot = ((c_alt_tot - c_hc_tot)/c_hc_tot*100) if c_hc_tot > 0 else 0
+                st.metric("Spot AVEC Altileo", f"{c_alt_tot:,.0f} EUR", f"{d2_tot:+.1f}% vs HC/HP", delta_color="inverse")
             with kpi4:
-                st.metric(label="Gain Net Periode", value=f"{gain_spot_net:,.0f} EUR", delta=f"Brut : {gain_spot_brut:,.0f} EUR", delta_color="off")
+                st.metric("Gain vs Actuel", f"{gain_vs_actuel:,.0f} EUR", "Spot+Altileo vs HC/HP", delta_color="normal")
             with kpi5:
-                st.metric(label="Gain vs Contrat Actuel", value=f"{gain_vs_actuel:,.0f} EUR", delta=f"Sur {total_days} jours", delta_color="off")
-            with kpi6:
-                st.metric(label="kWh economises", value=f"{kwh_saved_tot:,.0f} kWh", delta=f"{(kwh_saved_tot * 0.05) / 1000:,.1f} t CO2", delta_color="off")
+                st.metric("kWh economises", f"{kwh_saved_tot:,.0f} kWh", f"{(kwh_saved_tot * 0.05) / 1000:,.1f} t CO2 evite", delta_color="normal")
 
             st.divider()
             if max_temp_spot > t_max:
