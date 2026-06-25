@@ -583,41 +583,91 @@ if analysis_run:
             s_h = sum_h if sum_h else sum_e
             s_e = sum_e if sum_e else sum_h
 
-            # KPIs Reference (HT)
-            f_ref_an = (s_h.get('total_ht', 0) * nb * 5) + (s_e.get('total_ht', 0) * nb * 7)
-            k_ref_an = (s_h.get('kwh_mois_total', 0) * nb * 5) + (s_e.get('kwh_mois_total', 0) * nb * 7)
+            # --- Generation des profils mensuels ---
+            df_spot_calc = df_proc.copy()
+            df_spot_calc['heure'] = df_spot_calc['timestamp'].dt.hour
+            df_spot_calc['mois'] = df_spot_calc['timestamp'].dt.month
+            
+            comp_global = df_spot_calc[df_spot_calc['categorie_conso'] == 'compresseur']\
+                .groupby('heure')['puissance_kw'].mean().reindex(range(24), fill_value=0)
+            other_global = df_spot_calc[df_spot_calc['categorie_conso'] != 'compresseur']\
+                .groupby('heure')['puissance_kw'].mean().reindex(range(24), fill_value=0)
+            global_all_hourly = comp_global + other_global
+            
+            monthly_profiles = {}
+            for mois in range(1, 13):
+                df_mois = df_spot_calc[df_spot_calc['mois'] == mois]
+                if not df_mois.empty:
+                    comp_m = df_mois[df_mois['categorie_conso'] == 'compresseur']\
+                        .groupby('heure')['puissance_kw'].mean().reindex(range(24), fill_value=0)
+                    other_m = df_mois[df_mois['categorie_conso'] != 'compresseur']\
+                        .groupby('heure')['puissance_kw'].mean().reindex(range(24), fill_value=0)
+                    monthly_profiles[mois] = comp_m + other_m
 
-            # Simulation financiere
-            def get_sim_metrics(s):
-                if not s:
-                    return 0.0, 0.0
-                k_hp_base = s.get('kwh_mois_hp', 0) * nb
-                k_hc_base = s.get('kwh_mois_hc', 0) * nb
+            # --- Simulation Classique HC/HP sur 12 mois ---
+            jours_par_mois = {1: 31, 2: 28, 3: 31, 4: 30, 5: 31, 6: 30, 7: 31, 8: 31, 9: 30, 10: 31, 11: 30, 12: 31}
+            noms_mois = {1: "Janvier", 2: "Fevrier", 3: "Mars", 4: "Avril", 5: "Mai", 6: "Juin", 7: "Juillet", 8: "Aout", 9: "Septembre", 10: "Octobre", 11: "Novembre", 12: "Decembre"}
+            
+            hchp_monthly_results = []
+            f_ref_an = 0.0
+            k_ref_an = 0.0
+            gain_an_brut = 0.0
+            k_sauves_an = 0.0
 
-                k_effaces = k_hp_base * (h / 16.0)
+            for m in range(1, 13):
+                jours = jours_par_mois[m]
+                saison = 'hiver' if m in [11, 12, 1, 2, 3] else 'ete'
+                prof = monthly_profiles.get(m, global_all_hourly)
+                
+                # Separation HP/HC de base (HP de 6h a 22h)
+                kwh_hp_jour = sum(prof[hh] for hh in range(6, 22))
+                kwh_hc_jour = sum(prof[hh] for hh in range(24) if hh < 6 or hh >= 22)
+                
+                k_hp_mois = kwh_hp_jour * jours * nb
+                k_hc_mois = kwh_hc_jour * jours * nb
+                
+                t_hp = tarifs['hp_hiv'] if saison == 'hiver' else tarifs['hp_ete']
+                t_hc = tarifs['hc_hiv'] if saison == 'hiver' else tarifs['hc_ete']
+                
+                f_hp_base = k_hp_mois * t_hp
+                f_hc_base = k_hc_mois * t_hc
+                turpe_base = (k_hp_mois + k_hc_mois) * tarifs['turpe']
+                taxes_base = (k_hp_mois + k_hc_mois) * tarifs['taxes']
+                total_ht_base = f_hp_base + f_hc_base + turpe_base + taxes_base
+                
+                k_effaces = k_hp_mois * (h / 16.0)
                 k_rattrapes = k_effaces * r * (1.0 - cop) * (1.0 + sec)
-
-                k_hp_sim = k_hp_base - k_effaces
-                k_hc_sim = k_hc_base + k_rattrapes
-
-                f_hp_sim = k_hp_sim * s.get('tarif_hp', 0)
-                f_hc_sim = k_hc_sim * s.get('tarif_hc', 0)
-                turpe_sim = (k_hp_sim + k_hc_sim) * s.get('tarif_turpe', 0)
-                taxes_sim = (k_hp_sim + k_hc_sim) * s.get('tarif_taxes', 0)
-
+                
+                k_hp_sim = k_hp_mois - k_effaces
+                k_hc_sim = k_hc_mois + k_rattrapes
+                
+                f_hp_sim = k_hp_sim * t_hp
+                f_hc_sim = k_hc_sim * t_hc
+                turpe_sim = (k_hp_sim + k_hc_sim) * tarifs['turpe']
+                taxes_sim = (k_hp_sim + k_hc_sim) * tarifs['taxes']
+                
                 total_ht_sim = (f_hp_sim + f_hc_sim + turpe_sim + taxes_sim) - (abo * nb)
-                gain = (s.get('total_ht', 0) * nb) - total_ht_sim
+                gain_mois = total_ht_base - total_ht_sim
+                
+                f_ref_an += total_ht_base
+                k_ref_an += (k_hp_mois + k_hc_mois)
+                gain_an_brut += gain_mois
+                k_sauves_an += (k_effaces - k_rattrapes)
+                
+                saas_mois = (saas * nb) / 12.0
+                
+                hchp_monthly_results.append({
+                    'mois_num': m,
+                    'mois_nom': noms_mois[m],
+                    'saison': saison,
+                    'jours': jours,
+                    'cout_base': total_ht_base,
+                    'cout_sim': total_ht_sim + saas_mois,
+                    'gain_net': gain_mois - saas_mois
+                })
 
-                return gain, (k_effaces - k_rattrapes)
-
-            gh, kh = get_sim_metrics(s_h)
-            ge, ke = get_sim_metrics(s_e)
-
-            gain_an_brut = (gh * 5) + (ge * 7)
             gain_an_net = gain_an_brut - (saas * nb)
-            k_sauves_an = (kh * 5) + (ke * 7)
             pct = (gain_an_brut / f_ref_an * 100) if f_ref_an > 0 else 0
-
             i_net = max(0, pr * nb - cee)
             roi = (i_net / gain_an_net * 12) if gain_an_net > 0 else 0
 
@@ -762,6 +812,28 @@ with tab_dashboard:
                 delta=f"soit {roi/12:.1f} ans",
                 delta_color="off"
             )
+
+        st.divider()
+        st.markdown('<p class="section-title">Analyse Mensuelle (Contrat HC/HP) sur 12 mois</p>', unsafe_allow_html=True)
+        
+        for res in hchp_monthly_results:
+            st.markdown(f"**Bilan {res['mois_nom']} ({res['jours']} jours - Tarif {res['saison'].capitalize()})**")
+            c1, c2, c3, c4 = st.columns(4)
+            c_base = res['cout_base']
+            c_sim = res['cout_sim']
+            g_net = res['gain_net']
+            
+            with c1:
+                st.metric("HC/HP Classique", f"{c_base:,.0f} EUR")
+            with c2:
+                # empty column to keep alignment with Spot
+                st.write("")
+            with c3:
+                d = ((c_sim - c_base)/c_base*100) if c_base > 0 else 0
+                st.metric("HC/HP AVEC Altileo", f"{c_sim:,.0f} EUR", f"{d:+.1f}% vs Classique", delta_color="inverse")
+            with c4:
+                st.metric("Gain Net Mensuel", f"{g_net:,.0f} EUR")
+            st.write("")
 
         st.divider()
         st.markdown('<p class="section-title">Parametres de modelisation retenus</p>', unsafe_allow_html=True)
@@ -1036,29 +1108,6 @@ with tab_spot:
     if not analysis_run:
         st.info("Lancez d'abord l'analyse dans l'onglet Simulation Delestage (Contrat HC/HP).")
     else:
-        # --- Profil de consommation du client ---
-        df_spot_calc = df_proc.copy()
-        df_spot_calc['heure'] = df_spot_calc['timestamp'].dt.hour
-        df_spot_calc['mois'] = df_spot_calc['timestamp'].dt.month
-        
-        # Profil Global (Fallback)
-        comp_global = df_spot_calc[df_spot_calc['categorie_conso'] == 'compresseur']\
-            .groupby('heure')['puissance_kw'].mean().reindex(range(24), fill_value=0)
-        other_global = df_spot_calc[df_spot_calc['categorie_conso'] != 'compresseur']\
-            .groupby('heure')['puissance_kw'].mean().reindex(range(24), fill_value=0)
-        global_all_hourly = comp_global + other_global
-
-        # Profils Mensuels
-        monthly_profiles = {}
-        for mois in range(1, 13):
-            df_mois = df_spot_calc[df_spot_calc['mois'] == mois]
-            if not df_mois.empty:
-                comp_m = df_mois[df_mois['categorie_conso'] == 'compresseur']\
-                    .groupby('heure')['puissance_kw'].mean().reindex(range(24), fill_value=0)
-                other_m = df_mois[df_mois['categorie_conso'] != 'compresseur']\
-                    .groupby('heure')['puissance_kw'].mean().reindex(range(24), fill_value=0)
-                monthly_profiles[mois] = comp_m + other_m
-
         # --- Chargement des prix Nord Pool ---
         spot_end_date = date.today() - timedelta(days=1)
         spot_start_date = spot_end_date - timedelta(days=spot_days)
