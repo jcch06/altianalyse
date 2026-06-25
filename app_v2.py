@@ -1397,11 +1397,11 @@ with tab_spot:
             # --- Graphique Barres Mensuel ---
             fig_monthly = go.Figure()
             fig_monthly.add_trace(go.Bar(
-                x=monthly['Mois'], y=monthly['Spot seul (EUR)'],
+                x=monthly_table['Mois'], y=monthly_table['Spot seul (EUR)'],
                 name='Spot SANS Altileo', marker_color='#E74C3C'
             ))
             fig_monthly.add_trace(go.Bar(
-                x=monthly['Mois'], y=monthly['Spot+Altileo (EUR)'],
+                x=monthly_table['Mois'], y=monthly_table['Spot+Altileo (EUR)'],
                 name='Spot AVEC Altileo', marker_color='#2D8C5A'
             ))
             fig_monthly.update_layout(
@@ -1414,7 +1414,7 @@ with tab_spot:
             )
             st.plotly_chart(fig_monthly, use_container_width=True, config={'displaylogo': False})
             
-            st.dataframe(monthly, use_container_width=True, hide_index=True)
+            st.dataframe(monthly_table, use_container_width=True, hide_index=True)
 
             # --- Figures pour l'onglet graphique ---
             fig_evo = go.Figure()
