@@ -679,6 +679,12 @@ if analysis_run:
             gain_moyen_mensuel = (gain_tot_net / jours_totaux) * (365.0 / 12.0) if jours_totaux > 0 else 0
             roi = (i_net / gain_moyen_mensuel) if gain_moyen_mensuel > 0 else 0
 
+            # Extrapolation annuelle pour le PDF et les graphiques
+            f_ref_an = f_ref_tot * (365.0 / jours_totaux) if jours_totaux > 0 else 0.0
+            gain_an_brut = gain_tot_brut * (365.0 / jours_totaux) if jours_totaux > 0 else 0.0
+            gain_an_net = gain_tot_net * (365.0 / jours_totaux) if jours_totaux > 0 else 0.0
+            k_sauves_an = k_sauves_tot * (365.0 / jours_totaux) if jours_totaux > 0 else 0.0
+
             # Calcul thermique theorique
             derive_max_hchp = h * pente_rechauffement
             temp_max_hchp = t_consigne + derive_max_hchp
@@ -1298,6 +1304,11 @@ with tab_spot:
             gain_vs_actuel = cost_hchp_tot - (cost_altileo_tot + saas_periode)
             max_temp_spot = res_df['max_temp'].max()
 
+            # Extrapolation annuelle pour le graphique de comparaison
+            f_ref_an = cost_hchp_tot * (365.0 / total_days) if total_days > 0 else 0.0
+            cost_spot_annual = cost_spot_tot * (365.0 / total_days) if total_days > 0 else 0.0
+            cost_altileo_annual = cost_altileo_tot * (365.0 / total_days) if total_days > 0 else 0.0
+
             st.divider()
             st.markdown(f'<p class="section-title">Analyse Mensuelle (Donnees reelles sur {total_days} jours)</p>', unsafe_allow_html=True)
             
@@ -1481,7 +1492,7 @@ with tab_spot:
             hover_spot = []
             hover_altileo = []
 
-            for idx, row in monthly.iterrows():
+            for idx, row in monthly_table.iterrows():
                 c_base = row['HC/HP de base (EUR)']
                 c_spot = row['Spot seul (EUR)']
                 c_altileo = row['Spot+Altileo (EUR)']
@@ -1515,41 +1526,41 @@ with tab_spot:
                 )
 
             # --- Graphique de comparaison mensuelle ---
-            fig_monthly = go.Figure()
-            fig_monthly.add_trace(go.Bar(
-                x=monthly['Mois'],
-                y=monthly['HC/HP de base (EUR)'],
+            fig_monthly_compare = go.Figure()
+            fig_monthly_compare.add_trace(go.Bar(
+                x=monthly_table['Mois'],
+                y=monthly_table['HC/HP de base (EUR)'],
                 name='HC/HP de base (sans delestage)',
                 marker_color='#8DA0B3',
                 text=text_hchp,
                 textposition='outside',
                 hovertemplate='%{customdata}'
             ))
-            fig_monthly.data[-1].customdata = hover_hchp
+            fig_monthly_compare.data[-1].customdata = hover_hchp
             
-            fig_monthly.add_trace(go.Bar(
-                x=monthly['Mois'],
-                y=monthly['Spot seul (EUR)'],
+            fig_monthly_compare.add_trace(go.Bar(
+                x=monthly_table['Mois'],
+                y=monthly_table['Spot seul (EUR)'],
                 name='Spot seul (sans delestage)',
                 marker_color='#C4652B',
                 text=text_spot,
                 textposition='outside',
                 hovertemplate='%{customdata}'
             ))
-            fig_monthly.data[-1].customdata = hover_spot
+            fig_monthly_compare.data[-1].customdata = hover_spot
             
-            fig_monthly.add_trace(go.Bar(
-                x=monthly['Mois'],
-                y=monthly['Spot+Altileo (EUR)'],
+            fig_monthly_compare.add_trace(go.Bar(
+                x=monthly_table['Mois'],
+                y=monthly_table['Spot+Altileo (EUR)'],
                 name='Spot + Altileo',
                 marker_color='#2D8C5A',
                 text=text_altileo,
                 textposition='outside',
                 hovertemplate='%{customdata}'
             ))
-            fig_monthly.data[-1].customdata = hover_altileo
+            fig_monthly_compare.data[-1].customdata = hover_altileo
 
-            fig_monthly.update_layout(
+            fig_monthly_compare.update_layout(
                 barmode='group',
                 margin=dict(l=10, r=10, t=30, b=10),
                 plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)',
@@ -1571,8 +1582,8 @@ with tab_spot_charts:
         st.error("Impossible de charger les donnees Nord Pool pour les graphiques.")
     else:
         st.markdown('<p class="section-title">Comparaison mensuelle : Spot seul vs Spot+Altileo (HT)</p>', unsafe_allow_html=True)
-        if fig_monthly is not None:
-            st.plotly_chart(fig_monthly, use_container_width=True, config={'displaylogo': False, 'modeBarButtonsToRemove': ['lasso2d', 'select2d']})
+        if fig_monthly_compare is not None:
+            st.plotly_chart(fig_monthly_compare, use_container_width=True, config={'displaylogo': False, 'modeBarButtonsToRemove': ['lasso2d', 'select2d']})
 
         st.markdown('<p class="section-title">Comparaison visuelle globale des scenarios (annuel HT)</p>', unsafe_allow_html=True)
         if fig_compare is not None:
