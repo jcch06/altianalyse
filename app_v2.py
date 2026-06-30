@@ -639,7 +639,15 @@ if analysis_run:
                 taxes_base = (k_hp_mois + k_hc_mois) * tarifs['taxes']
                 total_ht_base = f_hp_base + f_hc_base + turpe_base + taxes_base
                 
-                k_effaces = k_hp_mois * (h / 16.0)
+                # Calcul precis de l'effacement base sur le profil horaire reel
+                hp_sorted_consos = sorted([prof[hh] for hh in range(6, 22)], reverse=True)
+                h_int = int(h)
+                h_frac = h - h_int
+                kwh_efface_jour = sum(hp_sorted_consos[:h_int])
+                if h_int < 16 and h_frac > 0:
+                    kwh_efface_jour += hp_sorted_consos[h_int] * h_frac
+                
+                k_effaces = kwh_efface_jour * jours * nb
                 k_rattrapes = k_effaces * r * (1.0 - cop) * (1.0 + sec)
                 
                 k_hp_sim = k_hp_mois - k_effaces
