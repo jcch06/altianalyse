@@ -526,7 +526,8 @@ with st.sidebar:
     # --- Simulation Spot ---
     st.markdown("### Simulation Spot")
     spot_delest_h = st.slider("Heures delestees / jour", 0, 12, 6)
-    spot_margin = st.number_input("Marge fournisseur (EUR/MWh)", value=5.0, step=1.0)
+    spot_margin = st.number_input("Marge fournisseur fixe (EUR/MWh)", value=5.0, step=1.0)
+    spot_margin_pct = st.number_input("Marge proportionnelle fournisseur (ex: Sobry %)", value=8.0, step=0.5)
     spot_days = st.slider("Jours d'historique Nord Pool", 30, 180, 90, step=10)
 
     st.divider()
@@ -639,8 +640,8 @@ if analysis_run:
                 taxes_base = (k_hp_mois + k_hc_mois) * tarifs['taxes']
                 total_ht_base = f_hp_base + f_hc_base + turpe_base + taxes_base
                 
-                # Calcul precis de l'effacement base sur le profil horaire reel
-                hp_sorted_consos = sorted([prof[hh] for hh in range(6, 22)], reverse=True)
+                # Calcul precis de l'effacement base sur le profil horaire reel (limite a la plage hors travail 12h-22h)
+                hp_sorted_consos = sorted([prof[hh] for hh in range(12, 22)], reverse=True)
                 h_int = int(h)
                 h_frac = h - h_int
                 kwh_efface_jour = sum(hp_sorted_consos[:h_int])
@@ -1206,7 +1207,7 @@ with tab_spot:
                             
                             c_test = 0.0
                             for hh in range(24):
-                                p_kwh = (prices_day[hh] + spot_margin) / 1000.0 + tarifs['turpe'] + tarifs['taxes']
+                                p_kwh = ((prices_day[hh] + spot_margin) / 1000.0) * (1.0 + spot_margin_pct / 100.0) + tarifs['turpe'] + tarifs['taxes']
                                 if hh in test_shed:
                                     c_test += 0
                                 else:
@@ -1223,7 +1224,7 @@ with tab_spot:
                 energy_removed_day = 0.0
 
                 for hh in range(24):
-                    price_kwh = (prices_day[hh] + spot_margin) / 1000.0 + tarifs['turpe'] + tarifs['taxes']
+                    price_kwh = ((prices_day[hh] + spot_margin) / 1000.0) * (1.0 + spot_margin_pct / 100.0) + tarifs['turpe'] + tarifs['taxes']
                     energy = current_all_hourly[hh]
                     cost_base_day += energy * price_kwh
 
@@ -1237,7 +1238,7 @@ with tab_spot:
                 available_h = [hh for hh in range(24) if hh not in delest_hours_day]
                 ratt_per_h = energy_rattrapage / len(available_h) if available_h else 0
                 for hh in available_h:
-                    price_kwh = (prices_day[hh] + spot_margin) / 1000.0 + tarifs['turpe'] + tarifs['taxes']
+                    price_kwh = ((prices_day[hh] + spot_margin) / 1000.0) * (1.0 + spot_margin_pct / 100.0) + tarifs['turpe'] + tarifs['taxes']
                     cost_altileo_day += ratt_per_h * price_kwh
 
                 # Simulation thermique jour par jour
@@ -1385,7 +1386,8 @@ with tab_spot:
                 pdf.cell(0, 6, f"Date de l'audit : {date.today().strftime('%d/%m/%Y')}", ln=1)
                 pdf.cell(0, 6, f"Nombre de chambres equipees : {nb}", ln=1)
                 pdf.cell(0, 6, f"Delestage programme (Spot) : {spot_delest_h} heures/jour", ln=1)
-                pdf.cell(0, 6, f"Marge fournisseur Spot : {spot_margin} EUR/MWh", ln=1)
+                pdf.cell(0, 6, f"Marge fixe Spot : {spot_margin} EUR/MWh", ln=1)
+                pdf.cell(0, 6, f"Marge proportionnelle Spot (Sobry) : {spot_margin_pct} %", ln=1)
                 pdf.cell(0, 6, f"Periode etudiee : {total_days} jours (Moyenne : {spot_avg_overall:.1f} EUR/MWh)", ln=1)
                 
                 pdf.ln(5)
