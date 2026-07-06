@@ -430,6 +430,33 @@ def fetch_nordpool_prices(start_date_str: str, end_date_str: str):
 
     return pd.DataFrame(records) if records else pd.DataFrame()
 
+
+@st.cache_data(show_spinner=False)
+def load_excel_prices_2025():
+    """Charge l'historique annuel complet des prix Spot 2025 depuis le fichier Excel."""
+    excel_path = "Prix Électricité France 2025 - Spot + Tempo.xlsx"
+    if not os.path.exists(excel_path):
+        excel_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), excel_path)
+    
+    try:
+        # Charger la feuille Spot 2025 Horaire
+        df = pd.read_excel(excel_path, sheet_name='Spot 2025 Horaire')
+        df['Date'] = pd.to_datetime(df['Date']).dt.date.astype(str)
+        df['hour'] = df['Heure'].astype(str).str.split(':').str[0].astype(int)
+        
+        # Trouver la colonne Spot (peut contenir des caractères accentués comme €)
+        spot_col = [c for c in df.columns if 'Spot' in c][0]
+        df['price_eur_mwh'] = df[spot_col].astype(float)
+        
+        # Tri et renommage des colonnes
+        res = df.groupby(['Date', 'hour'])['price_eur_mwh'].mean().reset_index()
+        res = res.rename(columns={'Date': 'date'})
+        return res
+    except Exception as e:
+        st.error(f"Erreur lors du chargement des prix depuis Excel : {e}")
+        return pd.DataFrame()
+
+
 # ============================================================
 # 7. INTERFACE : EN-TETE
 # ============================================================
@@ -474,8 +501,8 @@ with st.sidebar:
         with col_c2:
             s_cvc = st.text_input("Capteur CVC", "courant_2")
 
-    # --- Periode d'analyse ---
-    st.markdown("### Periode d'analyse")
+    # --- Période d'analyse ---
+    st.markdown("### Période d'analyse")
     min_date, max_date = fetch_table_date_range(t_name)
     col_d1, col_d2 = st.columns(2)
     with col_d1:
@@ -484,7 +511,7 @@ with st.sidebar:
         d_end = st.date_input("Fin", max_date)
 
     # --- Tarifs ---
-    with st.expander("Parametres physiques et tarifs"):
+    with st.expander("Paramètres physiques et tarifs"):
         tarifs = {
             'cos_phi': st.number_input("Cos Phi (Froid)", value=0.92, format="%.2f"),
             'hp_hiv': st.number_input("HP Hiver (EUR/kWh)", value=0.12618, format="%.5f"),
@@ -495,19 +522,19 @@ with st.sidebar:
             'taxes': st.number_input("Taxes CSPE (EUR/kWh)", value=0.02100, format="%.5f"),
         }
 
-    with st.expander("Parametres thermiques (HACCP)"):
-        t_consigne = st.number_input("Temperature consigne (C)", value=-18.0, step=0.5)
-        t_max = st.number_input("Limite HACCP (C)", value=-15.0, step=0.5)
-        pente_rechauffement = st.number_input("Rechauffement (C/h)", value=0.21, step=0.01)
-        pente_refroidissement = st.number_input("Refroidissement (C/h)", value=-0.70, step=0.05)
+    with st.expander("Paramètres thermiques (HACCP)"):
+        t_consigne = st.number_input("Température consigne (°C)", value=-18.0, step=0.5)
+        t_max = st.number_input("Limite HACCP (°C)", value=-15.0, step=0.5)
+        pente_rechauffement = st.number_input("Réchauffement (°C/h)", value=0.21, step=0.01)
+        pente_refroidissement = st.number_input("Refroidissement (°C/h)", value=-0.70, step=0.05)
 
     st.divider()
 
     # --- Modelisation ---
-    st.markdown("### Modelisation Altileo")
-    h = st.slider("Delestage HP (heures)", 0.0, 16.0, 8.0, 0.5)
-    r = st.slider("Rattrapage HC (%)", 0, 100, 5, 1) / 100.0
-    sec = st.slider("Marge de securite (%)", 0, 50, 5, 1) / 100.0
+    st.markdown("### Modélisation Altileo")
+    h = st.slider("Délestage HP (heures)", 0.0, 16.0, 5.0, 0.5)
+    r = st.slider("Rattrapage HC (%)", 0, 100, 10, 1) / 100.0
+    sec = st.slider("Marge de sécurité (%)", 0, 50, 10, 1) / 100.0
     cop = st.slider("Bonus COP nuit (%)", 0, 50, 5, 1) / 100.0
 
     abo = st.number_input("Gain abonnement kVA (EUR/mois/ch)", value=0.0)
@@ -515,8 +542,8 @@ with st.sidebar:
 
     st.divider()
 
-    # --- Deploiement ---
-    st.markdown("### Deploiement")
+    # --- Déploiement ---
+    st.markdown("### Déploiement")
     nb = st.number_input("Nombre de chambres", min_value=1, value=1)
     pr = st.number_input("Prix installation / chambre (EUR)", value=1500.0)
     cee = st.number_input("Prime CEE globale (EUR)", value=0.0)
@@ -525,10 +552,15 @@ with st.sidebar:
 
     # --- Simulation Spot ---
     st.markdown("### Simulation Spot")
-    spot_delest_h = st.slider("Heures delestees / jour", 0, 12, 6)
-    spot_margin = st.number_input("Marge fournisseur fixe (EUR/MWh)", value=5.0, step=1.0)
+    spot_source = st.radio("Source des prix Spot", ["Historique annuel 2025 (Sobry)", "Derniers jours réels (API Nord Pool)"])
+    spot_delest_h = st.slider("Heures délestées / jour", 0, 12, 5)
+    spot_margin = st.number_input("Marge fournisseur fixe (EUR/MWh)", value=0.0, step=1.0)
     spot_margin_pct = st.number_input("Marge proportionnelle fournisseur (ex: Sobry %)", value=8.0, step=0.5)
-    spot_days = st.slider("Jours d'historique Nord Pool", 30, 180, 90, step=10)
+    
+    if spot_source == "Derniers jours réels (API Nord Pool)":
+        spot_days = st.slider("Jours d'historique Nord Pool", 30, 180, 90, step=10)
+    else:
+        spot_days = 365
 
     st.divider()
 
@@ -569,7 +601,7 @@ if analysis_run:
         df_raw = fetch_supabase_data(str(d_start), str(d_end), t_name, tuple([s_comp, s_cvc]))
 
         if df_raw.empty:
-            st.warning("Aucune donnee trouvee pour cette periode et cette table.")
+            st.warning("Aucune donnée trouvée pour cette periode et cette table.")
             analysis_run = False
         else:
             df_proc = process_data(df_raw, s_comp, s_cvc, tarifs)
@@ -783,10 +815,10 @@ if analysis_run:
 # ============================================================
 
 tab_dashboard, tab_details, tab_charts, tab_spot, tab_spot_charts, tab_thermal, tab_monitoring = st.tabs([
-    "Simulation Delestage (Contrat HC/HP)",
-    "Audit detaille (HC/HP)",
+    "Simulation Délestage (Contrat HC/HP)",
+    "Audit détaillé (HC/HP)",
     "Graphiques (HC/HP)",
-    "Simulation Delestage (Prix SPOT)",
+    "Simulation Délestage (Prix SPOT)",
     "Graphiques (Prix SPOT)",
     "Validation Thermique",
     "Monitoring capteurs"
@@ -797,10 +829,10 @@ tab_dashboard, tab_details, tab_charts, tab_spot, tab_spot_charts, tab_thermal, 
 # ----------------------------------------------------------
 with tab_dashboard:
     if not analysis_run:
-        st.info("Configurez les parametres dans le panneau lateral puis lancez l'analyse.")
+        st.info("Configurez les paramètres dans le panneau latéral puis lancez l'analyse.")
     else:
         nb_mois = len(mois_dispos)
-        st.markdown(f'<p class="section-title">Detail Mensuel ({nb_mois} mois etudies)</p>', unsafe_allow_html=True)
+        st.markdown(f'<p class="section-title">Détail Mensuel ({nb_mois} mois etudies)</p>', unsafe_allow_html=True)
         
         for res in hchp_monthly_results:
             st.markdown(f"**Bilan {res['mois_nom']} ({res['jours']} jours - Tarif {res['saison'].capitalize()})**")
@@ -822,12 +854,12 @@ with tab_dashboard:
             st.write("")
 
         st.divider()
-        st.markdown(f'<p class="section-title">Synthese globale sur la periode etudiee ({jours_totaux} jours)</p>', unsafe_allow_html=True)
+        st.markdown(f'<p class="section-title">Synthèse globale sur la période étudiée ({jours_totaux} jours)</p>', unsafe_allow_html=True)
 
         col1, col2, col3, col4, col5 = st.columns(5)
         with col1:
             st.metric(
-                label="Facture de reference",
+                label="Facture de référence",
                 value=f"{f_ref_tot:,.0f} EUR",
                 delta=f"{k_ref_tot:,.0f} kWh",
                 delta_color="off"
@@ -905,7 +937,7 @@ with tab_dashboard:
             
             pdf.set_font("Arial", "", 11)
             pdf.set_text_color(0, 0, 0)
-            pdf.cell(0, 6, f"Facture de reference : {f_ref_an:,.0f} EUR/an", ln=1)
+            pdf.cell(0, 6, f"Facture de référence : {f_ref_an:,.0f} EUR/an", ln=1)
             pdf.cell(0, 6, f"Gain d'exploitation brut : {gain_an_brut:,.0f} EUR/an", ln=1)
             pdf.cell(0, 6, f"Abonnement SaaS : {saas * nb:,.0f} EUR/an", ln=1)
             pdf.cell(0, 6, f"Gain d'exploitation NET : {gain_an_net:,.0f} EUR/an", ln=1)
@@ -1127,25 +1159,33 @@ with tab_monitoring:
 # ONGLET 5 : SIMULATION SPOT (DONNEES NORD POOL)
 # ----------------------------------------------------------
 with tab_spot:
-    st.markdown('<p class="section-title">Simulation contrat Spot -- Donnees Nord Pool France</p>', unsafe_allow_html=True)
+    st.markdown('<p class="section-title">Simulation contrat Spot -- Données Nord Pool France</p>', unsafe_allow_html=True)
 
     if not analysis_run:
-        st.info("Lancez d'abord l'analyse dans l'onglet Simulation Delestage (Contrat HC/HP).")
+        st.info("Lancez d'abord l'analyse dans l'onglet Simulation Délestage (Contrat HC/HP).")
     else:
         # --- Chargement des prix Nord Pool ---
-        spot_end_date = date.today() - timedelta(days=1)
-        spot_start_date = spot_end_date - timedelta(days=spot_days)
-
-        with st.spinner(f"Chargement des prix Spot Nord Pool ({spot_days} jours)..."):
-            spot_df = fetch_nordpool_prices(spot_start_date.isoformat(), spot_end_date.isoformat())
-
-        if spot_df.empty:
-            st.error("Impossible de charger les donnees Nord Pool. Verifiez votre connexion.")
+        if spot_source == "Historique annuel 2025 (Sobry)":
+            with st.spinner("Chargement des prix Spot 2025 depuis le fichier Excel..."):
+                spot_df = load_excel_prices_2025()
+            if spot_df.empty:
+                st.error("Impossible de charger les données du fichier Excel 2025. Assurez-vous que le fichier est présent dans le répertoire racine.")
         else:
+            spot_end_date = date.today() - timedelta(days=1)
+            spot_start_date = spot_end_date - timedelta(days=spot_days)
+            with st.spinner(f"Chargement des prix Spot Nord Pool ({spot_days} jours)..."):
+                spot_df = fetch_nordpool_prices(spot_start_date.isoformat(), spot_end_date.isoformat())
+            if spot_df.empty:
+                st.error("Impossible de charger les données Nord Pool. Verifiez votre connexion.")
+
+        if not spot_df.empty:
             n_days_loaded = spot_df['date'].nunique()
             spot_avg_overall = spot_df['price_eur_mwh'].mean()
 
-            st.success(f"{n_days_loaded} jours charges ({spot_start_date.strftime('%d/%m/%Y')} au {spot_end_date.strftime('%d/%m/%Y')}) -- Prix moyen : **{spot_avg_overall:.1f} EUR/MWh**")
+            if spot_source == "Historique annuel 2025 (Sobry)":
+                st.success(f"Année 2025 complète chargée ({n_days_loaded} jours) depuis le fichier Sobry -- Prix moyen annuel : **{spot_avg_overall:.1f} EUR/MWh**")
+            else:
+                st.success(f"{n_days_loaded} jours chargés ({spot_start_date.strftime('%d/%m/%Y')} au {spot_end_date.strftime('%d/%m/%Y')}) -- Prix moyen : **{spot_avg_overall:.1f} EUR/MWh**")
 
             # --- Profil horaire moyen (depuis les vraies donnees) ---
             avg_profile = spot_df.groupby('hour')['price_eur_mwh'].mean().reindex(range(24), fill_value=0)
@@ -1171,7 +1211,7 @@ with tab_spot:
                 yaxis=dict(title="EUR / MWh", showgrid=True, gridcolor='rgba(136,152,168,0.2)'),
                 xaxis=dict(showgrid=False, showline=True, linecolor='rgba(136,152,168,0.5)'),
                 title=dict(
-                    text=f"Profil horaire moyen Nord Pool FR -- {spot_delest_h}h delestees/jour (en rouge)",
+                    text=f"Profil horaire moyen Nord Pool FR -- {spot_delest_h}h délestées/jour (en rouge)",
                     font=dict(size=13), x=0.5
                 ),
                 showlegend=False
@@ -1587,9 +1627,9 @@ with tab_spot:
 with tab_spot_charts:
     st.markdown('<p class="section-title">Visualisation de la simulation Spot (Donnees Nord Pool)</p>', unsafe_allow_html=True)
     if not analysis_run:
-        st.info("Lancez d'abord l'analyse dans l'onglet Simulation Delestage (Contrat HC/HP).")
+        st.info("Lancez d'abord l'analyse dans l'onglet Simulation Délestage (Contrat HC/HP).")
     elif spot_df is None or spot_df.empty:
-        st.error("Impossible de charger les donnees Nord Pool pour les graphiques.")
+        st.error("Impossible de charger les données Nord Pool pour les graphiques.")
     else:
         st.markdown('<p class="section-title">Comparaison mensuelle : Spot seul vs Spot+Altileo (HT)</p>', unsafe_allow_html=True)
         if fig_monthly_compare is not None:
