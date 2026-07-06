@@ -4,3 +4,4 @@ python-dotenv
 matplotlib
 plotly
 fpdf2
+openpyxl
