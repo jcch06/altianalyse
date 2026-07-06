@@ -435,7 +435,10 @@ def fetch_nordpool_prices(start_date_str: str, end_date_str: str):
 def load_excel_prices_2025():
     """Charge l'historique annuel complet des prix Spot 2025 depuis le fichier Excel."""
     excel_path = "Prix Électricité France 2025 - Spot + Tempo.xlsx"
-    if not os.path.exists(excel_path):
+    local_path = os.path.join(os.path.dirname(__file__), excel_path)
+    if os.path.exists(local_path):
+        excel_path = local_path
+    elif not os.path.exists(excel_path):
         excel_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), excel_path)
     
     try:
