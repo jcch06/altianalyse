@@ -19,7 +19,7 @@ from matplotlib.patches import Patch
 # 1. CONFIGURATION DE LA PAGE
 # ============================================================
 st.set_page_config(
-    page_title="Altileo - Audit Energetique",
+    page_title="Altileo - Audit Énergétique",
     layout="wide",
     initial_sidebar_state="expanded"
 )
@@ -467,7 +467,7 @@ def load_excel_prices_2025():
 st.markdown("""
 <div class="app-header">
     <h1>ALTILEO</h1>
-    <p>Plateforme d'audit energetique et de modelisation financiere</p>
+    <p>Plateforme d'audit énergétique et de modélisation financière</p>
 </div>
 """, unsafe_allow_html=True)
 
