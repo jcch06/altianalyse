@@ -851,7 +851,8 @@ with tab_dashboard:
                 st.write("")
             with c3:
                 d = ((c_sim - c_base)/c_base*100) if c_base > 0 else 0
-                st.metric("HC/HP AVEC Altileo", f"{c_sim:,.0f} EUR", f"{d:+.1f}% vs Classique", delta_color="inverse")
+                saving = c_sim - c_base
+                st.metric("HC/HP AVEC Altileo", f"{c_sim:,.0f} EUR", f"{d:+.1f}% ({saving:+,.0f} EUR) vs Classique", delta_color="inverse")
             with c4:
                 st.metric("Gain Net Mensuel", f"{g_net:,.0f} EUR")
             st.write("")
@@ -878,7 +879,7 @@ with tab_dashboard:
             st.metric(
                 label="Gain Net d'exploit.",
                 value=f"{gain_tot_net:,.0f} EUR",
-                delta=f"-{pct:.1f} % (brut)"
+                delta=f"+{gain_tot_net:,.0f} EUR (-{pct:.1f}% brut)"
             )
         with col4:
             st.metric(
@@ -1418,10 +1419,12 @@ with tab_spot:
                     st.metric(label="HC/HP", value=f"{c_hc:,.0f} EUR")
                 with k2:
                     d1 = ((c_spot - c_hc)/c_hc*100) if c_hc>0 else 0
-                    st.metric(label="Spot SANS Altileo", value=f"{c_spot:,.0f} EUR", delta=f"{d1:+.1f}% vs HC/HP", delta_color="inverse")
+                    diff1 = c_spot - c_hc
+                    st.metric(label="Spot SANS Altileo", value=f"{c_spot:,.0f} EUR", delta=f"{d1:+.1f}% ({diff1:+,.0f} EUR) vs HC/HP", delta_color="inverse")
                 with k3:
                     d2 = ((c_alt + saas_mois - c_hc)/c_hc*100) if c_hc>0 else 0
-                    st.metric(label="Spot AVEC Altileo", value=f"{(c_alt + saas_mois):,.0f} EUR", delta=f"{d2:+.1f}% vs HC/HP", delta_color="inverse")
+                    diff2 = (c_alt + saas_mois) - c_hc
+                    st.metric(label="Spot AVEC Altileo", value=f"{(c_alt + saas_mois):,.0f} EUR", delta=f"{d2:+.1f}% ({diff2:+,.0f} EUR) vs HC/HP", delta_color="inverse")
                 with k4:
                     st.metric(label="Gain Net Mensuel", value=f"{g_net:,.0f} EUR")
                 st.write("") # spacing
@@ -1438,10 +1441,12 @@ with tab_spot:
                 st.metric("HC/HP Classique", f"{c_hc_tot:,.0f} EUR", f"Sur {total_days} jours", delta_color="off")
             with kpi2:
                 d1_tot = ((c_spot_tot - c_hc_tot)/c_hc_tot*100) if c_hc_tot > 0 else 0
-                st.metric("Spot SANS Altileo", f"{c_spot_tot:,.0f} EUR", f"{d1_tot:+.1f}% vs HC/HP", delta_color="inverse")
+                diff1_tot = c_spot_tot - c_hc_tot
+                st.metric("Spot SANS Altileo", f"{c_spot_tot:,.0f} EUR", f"{d1_tot:+.1f}% ({diff1_tot:+,.0f} EUR) vs HC/HP", delta_color="inverse")
             with kpi3:
                 d2_tot = ((c_alt_tot - c_hc_tot)/c_hc_tot*100) if c_hc_tot > 0 else 0
-                st.metric("Spot AVEC Altileo", f"{c_alt_tot:,.0f} EUR", f"{d2_tot:+.1f}% vs HC/HP", delta_color="inverse")
+                diff2_tot = c_alt_tot - c_hc_tot
+                st.metric("Spot AVEC Altileo", f"{c_alt_tot:,.0f} EUR", f"{d2_tot:+.1f}% ({diff2_tot:+,.0f} EUR) vs HC/HP", delta_color="inverse")
             with kpi4:
                 st.metric("Gain vs Actuel", f"{gain_vs_actuel:,.0f} EUR", "Spot+Altileo vs HC/HP", delta_color="normal")
             with kpi5:
