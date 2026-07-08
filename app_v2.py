@@ -1149,11 +1149,12 @@ with tab_monitoring:
                 with stat_cols[i % len(stat_cols)]:
                     st.markdown(f"**{sensor}**")
                     last_val = df_s['valeur'].iloc[-1]
-                    st.metric("Derniere valeur", f"{last_val:.2f}")
+                    unit = " A" if "courant" in sensor.lower() else " °C" if "temp" in sensor.lower() else ""
+                    st.metric("Derniere valeur", f"{last_val:.2f}{unit}")
                     sc1, sc2, sc3 = st.columns(3)
-                    sc1.metric("Min", f"{df_s['valeur'].min():.2f}")
-                    sc2.metric("Moy", f"{df_s['valeur'].mean():.2f}")
-                    sc3.metric("Max", f"{df_s['valeur'].max():.2f}")
+                    sc1.metric("Min", f"{df_s['valeur'].min():.2f}{unit}")
+                    sc2.metric("Moy", f"{df_s['valeur'].mean():.2f}{unit}")
+                    sc3.metric("Max", f"{df_s['valeur'].max():.2f}{unit}")
 
             # Horodatage
             st.caption(f"Derniere actualisation : {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}")
@@ -1750,16 +1751,16 @@ with tab_thermal:
             temp_24h.append(current_t)
             
         fig_24h = go.Figure()
-        fig_24h.add_trace(go.Scatter(x=list(range(25)), y=temp_24h, mode='lines', name='Temperature Produit', line=dict(color='#C4652B', width=3)))
-        fig_24h.add_hline(y=t_consigne, line_dash="dash", line_color="#2D8C5A", annotation_text=f"Consigne ({t_consigne}C)", annotation_position="top left")
-        fig_24h.add_hline(y=t_max, line_dash="dash", line_color="#E74C3C", annotation_text=f"Limite HACCP ({t_max}C)", annotation_position="bottom left")
+        fig_24h.add_trace(go.Scatter(x=list(range(25)), y=temp_24h, mode='lines', name='Température Produit', line=dict(color='#C4652B', width=3)))
+        fig_24h.add_hline(y=t_consigne, line_dash="dash", line_color="#2D8C5A", annotation_text=f"Consigne ({t_consigne}°C)", annotation_position="top left")
+        fig_24h.add_hline(y=t_max, line_dash="dash", line_color="#E74C3C", annotation_text=f"Limite HACCP ({t_max}°C)", annotation_position="bottom left")
         
         for hh in shed_hours:
             fig_24h.add_vrect(x0=hh, x1=hh+1, fillcolor="rgba(231,76,60,0.1)", layer="below", line_width=0)
             
         fig_24h.update_layout(
-            title="Cycle journalier (24 heures) - Zone rouge = compresseur coupe",
-            xaxis_title="Heure de la journee", yaxis_title="Temperature (C)",
+            title="Cycle journalier (24 heures) - Zone rouge = compresseur coupé",
+            xaxis_title="Heure de la journée", yaxis_title="Température (°C)",
             margin=dict(l=10, r=10, t=40, b=10), height=350,
             plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)', font=dict(family="Inter", color='#8DA0B3'),
             yaxis=dict(showgrid=True, gridcolor='rgba(136,152,168,0.2)'), xaxis=dict(showgrid=False)
@@ -1781,16 +1782,16 @@ with tab_thermal:
         is_conforme = max_168h <= t_max
         
         fig_168h = go.Figure()
-        fig_168h.add_trace(go.Scatter(x=list(range(169)), y=temp_168h, mode='lines', name='Temperature Produit', line=dict(color='#1B3A5C', width=2)))
-        fig_168h.add_hline(y=t_consigne, line_dash="dash", line_color="#2D8C5A", annotation_text=f"Consigne ({t_consigne}C)", annotation_position="top left")
-        fig_168h.add_hline(y=t_max, line_dash="dash", line_color="#E74C3C", annotation_text=f"Limite HACCP ({t_max}C)", annotation_position="bottom left")
+        fig_168h.add_trace(go.Scatter(x=list(range(169)), y=temp_168h, mode='lines', name='Température Produit', line=dict(color='#1B3A5C', width=2)))
+        fig_168h.add_hline(y=t_consigne, line_dash="dash", line_color="#2D8C5A", annotation_text=f"Consigne ({t_consigne}°C)", annotation_position="top left")
+        fig_168h.add_hline(y=t_max, line_dash="dash", line_color="#E74C3C", annotation_text=f"Limite HACCP ({t_max}°C)", annotation_position="bottom left")
         
         for day in range(7):
             fig_168h.add_vline(x=day*24, line_dash="dot", line_color="rgba(136,152,168,0.5)")
             
         fig_168h.update_layout(
             title="Stress Test inertiel (7 jours / 168 heures)",
-            xaxis_title="Heure cumulée", yaxis_title="Temperature (C)",
+            xaxis_title="Heure cumulée", yaxis_title="Température (°C)",
             margin=dict(l=10, r=10, t=40, b=10), height=350,
             plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)', font=dict(family="Inter", color='#8DA0B3'),
             yaxis=dict(showgrid=True, gridcolor='rgba(136,152,168,0.2)'), xaxis=dict(showgrid=False)
@@ -1800,12 +1801,11 @@ with tab_thermal:
         c_kpi1, c_kpi2 = st.columns(2)
         with c_kpi1:
             if is_conforme:
-                st.success(f"✅ **CONFORME** : La temperature reste stable et le compresseur a le temps de rattraper la consigne chaque jour.")
+                st.success(f"✅ **CONFORME** : La température reste stable et le compresseur a le temps de rattraper la consigne chaque jour.")
             else:
-                st.error(f"⚠️ **RISQUE SANITAIRE** : Derivation thermique detectee. La chaleur s'accumule de jour en jour.")
+                st.error(f"⚠️ **RISQUE SANITAIRE** : Dérive thermique détectée. La chaleur s'accumule de jour en jour.")
         with c_kpi2:
-            st.metric(label="Pic de temperature sur 7 jours", value=f"{max_168h:.2f} C", delta=f"{max_168h - t_consigne:+.2f} C vs consigne", delta_color="inverse")
+            st.metric(label="Pic de température sur 7 jours", value=f"{max_168h:.2f} °C", delta=f"{max_168h - t_consigne:+.2f} °C vs consigne", delta_color="inverse")
             
         st.plotly_chart(fig_24h, use_container_width=True, config={'displaylogo': False})
         st.plotly_chart(fig_168h, use_container_width=True, config={'displaylogo': False})
-
