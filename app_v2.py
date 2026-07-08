@@ -1313,9 +1313,41 @@ with tab_spot:
                     p_kwh = t_base + tarifs['turpe'] + tarifs['taxes']
                     cost_hchp_day += current_all_hourly[hh] * p_kwh
 
+                # HC/HP AVEC delestage pour la meme journee
+                hp_consos = [current_all_hourly[hh] for hh in range(6, 22)]
+                hp_sorted = sorted(hp_consos, reverse=True)
+                h_int = int(h)
+                h_frac = h - h_int
+                kwh_efface = sum(hp_sorted[:h_int])
+                if h_int < 16 and h_frac > 0:
+                    kwh_efface += hp_sorted[h_int] * h_frac
+                
+                k_effaces_day = kwh_efface
+                k_rattrapes_day = k_effaces_day * r * (1.0 - cop) * (1.0 + sec)
+                
+                k_hp_base = sum(current_all_hourly[hh] for hh in range(6, 22))
+                k_hc_base = sum(current_all_hourly[hh] for hh in [hh for hh in range(24) if hh < 6 or hh >= 22])
+                
+                k_hp_sim = k_hp_base - k_effaces_day
+                k_hc_sim = k_hc_base + k_rattrapes_day
+                
+                if saison_val == 'hiver':
+                    t_hp = tarifs['hp_hiv']
+                    t_hc = tarifs['hc_hiv']
+                else:
+                    t_hp = tarifs['hp_ete']
+                    t_hc = tarifs['hc_ete']
+                    
+                f_hp_sim = k_hp_sim * t_hp
+                f_hc_sim = k_hc_sim * t_hc
+                turpe_sim = (k_hp_sim + k_hc_sim) * tarifs['turpe']
+                taxes_sim = (k_hp_sim + k_hc_sim) * tarifs['taxes']
+                cost_hchp_sim_day = f_hp_sim + f_hc_sim + turpe_sim + taxes_sim
+
                 daily_results.append({
                     'date': date_val,
                     'cost_hchp': cost_hchp_day,
+                    'cost_hchp_sim': cost_hchp_sim_day,
                     'cost_spot': cost_base_day,
                     'cost_altileo': cost_altileo_day,
                     'avg_price': prices_day.mean(),
@@ -1335,6 +1367,7 @@ with tab_spot:
                 jours=('date', 'count'),
                 prix_moyen=('avg_price', 'mean'),
                 cout_hchp=('cost_hchp', 'sum'),
+                cout_hchp_sim=('cost_hchp_sim', 'sum'),
                 cout_spot=('cost_spot', 'sum'),
                 cout_altileo=('cost_altileo', 'sum'),
                 kwh_eco=('kwh_saved', 'sum'),
@@ -1468,8 +1501,8 @@ with tab_spot:
             st.divider()
             st.markdown('<p class="section-title">Evolution Mensuelle de la Facture</p>', unsafe_allow_html=True)
             monthly_table = monthly.copy()
-            monthly_table.columns = ['Mois', 'Jours', 'Prix moy (EUR/MWh)', 'HC/HP de base (EUR)', 'Spot seul (EUR)', 'Spot+Altileo (EUR)', 'kWh eco.', 'Gain Altileo (EUR)', 'Temp Max (C)']
-            for c in ['Prix moy (EUR/MWh)', 'HC/HP de base (EUR)', 'Spot seul (EUR)', 'Spot+Altileo (EUR)', 'kWh eco.', 'Gain Altileo (EUR)', 'Temp Max (C)']:
+            monthly_table.columns = ['Mois', 'Jours', 'Prix moy (EUR/MWh)', 'HC/HP de base (EUR)', 'HC/HP avec Altileo (EUR)', 'Spot seul (EUR)', 'Spot+Altileo (EUR)', 'kWh eco.', 'Gain Altileo (EUR)', 'Temp Max (C)']
+            for c in ['Prix moy (EUR/MWh)', 'HC/HP de base (EUR)', 'HC/HP avec Altileo (EUR)', 'Spot seul (EUR)', 'Spot+Altileo (EUR)', 'kWh eco.', 'Gain Altileo (EUR)', 'Temp Max (C)']:
                 monthly_table[c] = monthly_table[c].round(1)
             
             # --- Graphique Barres Mensuel ---
@@ -1543,33 +1576,49 @@ with tab_spot:
 
             # --- Textes et hovers pour comparaison mensuelle ---
             text_hchp = []
+            text_hchp_sim = []
             text_spot = []
             text_altileo = []
             hover_hchp = []
+            hover_hchp_sim = []
             hover_spot = []
             hover_altileo = []
 
+            # Calculer la série "HC/HP avec Altileo (SaaS inc)" pour Plotly
+            monthly_table['HC/HP avec Altileo (SaaS inc) (EUR)'] = monthly_table['HC/HP avec Altileo (EUR)'] + (saas * nb) * (monthly_table['Jours'] / 365.0)
+
             for idx, row in monthly_table.iterrows():
                 c_base = row['HC/HP de base (EUR)']
+                c_hchp_sim = row['HC/HP avec Altileo (SaaS inc) (EUR)']
                 c_spot = row['Spot seul (EUR)']
                 c_altileo = row['Spot+Altileo (EUR)']
+                saas_mois = (saas * nb) * (row['Jours'] / 365.0)
                 
                 text_hchp.append(f"{c_base:,.0f} €")
                 hover_hchp.append(f"<b>{row['Mois']}</b><br>HC/HP de base : {c_base:,.0f} EUR<extra></extra>")
                 
                 if c_base > 0:
+                    pct_hchp_sim = (c_hchp_sim - c_base) / c_base * 100
                     pct_spot = (c_spot - c_base) / c_base * 100
                     pct_altileo = (c_altileo - c_base) / c_base * 100
+                    text_hchp_sim.append(f"{c_hchp_sim:,.0f} €<br>({pct_hchp_sim:+.1f}%)")
                     text_spot.append(f"{c_spot:,.0f} €<br>({pct_spot:+.1f}%)")
                     text_altileo.append(f"{c_altileo:,.0f} €<br>({pct_altileo:+.1f}%)")
                 else:
+                    text_hchp_sim.append(f"{c_hchp_sim:,.0f} €")
                     text_spot.append(f"{c_spot:,.0f} €")
                     text_altileo.append(f"{c_altileo:,.0f} €")
+                    pct_hchp_sim = 0
                     pct_spot = 0
                     pct_altileo = 0
                 
                 pct_vs_spot = (c_altileo - c_spot) / c_spot * 100 if c_spot > 0 else 0
                 
+                hover_hchp_sim.append(
+                    f"<b>{row['Mois']}</b><br>"
+                    f"HC/HP avec Altileo : {c_hchp_sim:,.0f} EUR<br>"
+                    f"Gain vs Base : {pct_hchp_sim:+.1f}%<extra></extra>"
+                )
                 hover_spot.append(
                     f"<b>{row['Mois']}</b><br>"
                     f"Spot seul : {c_spot:,.0f} EUR<br>"
@@ -1594,6 +1643,17 @@ with tab_spot:
                 hovertemplate='%{customdata}'
             ))
             fig_monthly_compare.data[-1].customdata = hover_hchp
+
+            fig_monthly_compare.add_trace(go.Bar(
+                x=monthly_table['Mois'],
+                y=monthly_table['HC/HP avec Altileo (SaaS inc) (EUR)'],
+                name='HC/HP avec Altileo',
+                marker_color='#5A738E',
+                text=text_hchp_sim,
+                textposition='outside',
+                hovertemplate='%{customdata}'
+            ))
+            fig_monthly_compare.data[-1].customdata = hover_hchp_sim
             
             fig_monthly_compare.add_trace(go.Bar(
                 x=monthly_table['Mois'],
