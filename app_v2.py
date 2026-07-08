@@ -1173,6 +1173,10 @@ with tab_spot:
                 spot_df = load_excel_prices_2025()
             if spot_df.empty:
                 st.error("Impossible de charger les données du fichier Excel 2025. Assurez-vous que le fichier est présent dans le répertoire racine.")
+            else:
+                dates_dt = pd.to_datetime(spot_df['date'])
+                spot_start_date = dates_dt.min().date()
+                spot_end_date = dates_dt.max().date()
         else:
             spot_end_date = date.today() - timedelta(days=1)
             spot_start_date = spot_end_date - timedelta(days=spot_days)
