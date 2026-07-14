@@ -18,9 +18,11 @@ from matplotlib.patches import Patch
 # ============================================================
 # 1. CONFIGURATION DE LA PAGE
 # ============================================================
+_FAVICON_PATH = os.path.join(os.path.dirname(__file__), "assets", "favicon.png")
+
 st.set_page_config(
     page_title="Altileo PRO",
-    page_icon="❄️",
+    page_icon=_FAVICON_PATH if os.path.exists(_FAVICON_PATH) else "*",
     layout="wide",
     initial_sidebar_state="expanded"
 )
@@ -45,37 +47,39 @@ def fmt_fr_signed(value, decimals: int = 0) -> str:
 
 
 # ============================================================
-# 1b. HABILLAGE PDF (couleurs de marque, coherent avec le CSS de l'app)
+# 1b. HABILLAGE PDF (charte "Frost & Carbon", coherent avec le CSS de l'app)
 # ============================================================
-PDF_BRAND_DARK = (27, 58, 92)
-PDF_BRAND_GREEN = (45, 140, 90)
-PDF_BRAND_GREY = (141, 160, 179)
+PDF_CARBON = (17, 17, 17)      # carbon -- bandeaux de preuve
+PDF_TEAL = (0, 164, 180)       # teal glacier -- accent
+PDF_MUTED_DARK = (153, 153, 153)  # muted-dark -- legendes sur fond sombre
 
 
 def pdf_add_header(pdf: FPDF, title: str) -> None:
-    """Bandeau de titre aux couleurs Altileo, en tete de chaque rapport PDF."""
-    pdf.set_fill_color(*PDF_BRAND_DARK)
+    """Bandeau de titre carbon avec logotype altileo* (asterisque teal), en tete de chaque rapport PDF."""
+    pdf.set_fill_color(*PDF_CARBON)
     pdf.rect(0, 0, 210, 26, style="F")
-    pdf.set_fill_color(*PDF_BRAND_GREEN)
-    pdf.rect(0, 26, 210, 1.2, style="F")
     pdf.set_xy(10, 8)
     pdf.set_font("Arial", "B", 18)
     pdf.set_text_color(255, 255, 255)
-    pdf.cell(0, 10, f"altileo*  {title}", ln=1)
-    pdf.set_y(33)
+    pdf.write(10, "altileo")
+    pdf.set_text_color(*PDF_TEAL)
+    pdf.write(10, "*")
+    pdf.set_text_color(255, 255, 255)
+    pdf.write(10, f"  {title}")
+    pdf.ln(18)
     pdf.set_text_color(0, 0, 0)
     pdf.set_font("Arial", "", 11)
 
 
 def pdf_add_section_title(pdf: FPDF, text: str) -> None:
-    """Titre de section avec lisere vert, coherent avec le design de l'application."""
+    """Titre de section avec lisere teal, coherent avec le design de l'application."""
     pdf.ln(4)
     y = pdf.get_y()
-    pdf.set_fill_color(*PDF_BRAND_GREEN)
+    pdf.set_fill_color(*PDF_TEAL)
     pdf.rect(10, y + 1, 2.2, 6, style="F")
     pdf.set_xy(14, y)
     pdf.set_font("Arial", "B", 13)
-    pdf.set_text_color(*PDF_BRAND_DARK)
+    pdf.set_text_color(*PDF_CARBON)
     pdf.cell(0, 8, text, ln=1)
     pdf.set_text_color(0, 0, 0)
     pdf.set_font("Arial", "", 11)
@@ -85,61 +89,87 @@ def pdf_add_footer(pdf: FPDF) -> None:
     """Pied de page discret, coherent sur tous les rapports Altileo."""
     pdf.set_auto_page_break(False)
     pdf.set_y(-18)
-    pdf.set_draw_color(*PDF_BRAND_GREY)
+    pdf.set_draw_color(*PDF_MUTED_DARK)
     pdf.line(10, pdf.get_y(), 200, pdf.get_y())
     pdf.ln(2)
     pdf.set_font("Arial", "I", 8)
-    pdf.set_text_color(*PDF_BRAND_GREY)
+    pdf.set_text_color(*PDF_MUTED_DARK)
     pdf.cell(0, 5, f"Altileo -- Rapport genere automatiquement le {date.today().strftime('%d/%m/%Y')}", ln=1, align="C")
 
 # ============================================================
-# 2. DESIGN SYSTEM (CSS)
+# 2. DESIGN SYSTEM (CSS) -- Charte "Frost & Carbon"
 # ============================================================
-st.markdown("""<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+st.markdown("""<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
 <style>
+:root {
+    --frost: #FFFFFF;
+    --carbon: #111111;
+    --surface: #F5F5F5;
+    --ink: #111111;
+    --muted: #555555;
+    --muted-dark: #999999;
+    --brand: #00A4B4;
+    --brand-deep: #0E7C8C;
+    --brand-dark: #0A6470;
+    --frost-tint: #D4F0F0;
+    --highlight: #FFD66B;
+    --success: #2A9D6E;
+    --warning: #E0A83D;
+    --danger: #D14343;
+    --line: #E5E5E5;
+}
 /* ========== Global ========== */
 html, body, [class*="css"] { font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; }
+.stApp { background-color: var(--frost); }
+.num, div[data-testid="stMetricValue"], div[data-testid="stMetricDelta"],
+[data-testid="stDataFrame"] { font-family: 'JetBrains Mono', ui-monospace, monospace; font-variant-numeric: tabular-nums; }
 /* ========== Sidebar ========== */
-section[data-testid="stSidebar"] [data-testid="stMarkdownContainer"] h3 { font-size: 0.65rem !important; text-transform: uppercase; letter-spacing: 2px; color: var(--text-color) !important; font-weight: 600 !important; margin-top: 0.6rem !important; margin-bottom: 0.4rem !important; padding-bottom: 0.3rem; border-bottom: 1px solid var(--secondary-background-color); opacity: 0.7; }
-section[data-testid="stSidebar"] [data-testid="stMarkdownContainer"] h2 { font-size: 0.85rem !important; font-weight: 600 !important; color: var(--text-color) !important; letter-spacing: 0.3px; margin-bottom: 0.5rem !important; }
-/* ========== Header banner ========== */
-.app-header { background: linear-gradient(135deg, #1B3A5C 0%, #264d73 60%, #1B3A5C 100%); padding: 1.6rem 2rem; border-radius: 6px; margin-bottom: 1.2rem; }
-.app-header h1 { font-size: 1.5rem; font-weight: 700; color: #ffffff; letter-spacing: 3px; margin: 0; }
-.app-header h1 .app-header-suffix { font-size: 0.75rem; font-weight: 600; letter-spacing: 2px; color: #2D8C5A; background: rgba(45,140,90,0.18); border: 1px solid rgba(45,140,90,0.5); border-radius: 4px; padding: 0.15rem 0.45rem; margin-left: 0.6rem; vertical-align: middle; }
-.app-header p { font-size: 0.8rem; color: #a3bdd4; margin: 0.3rem 0 0 0; font-weight: 400; letter-spacing: 0.4px; }
-/* ========== KPI Metrics ========== */
-div[data-testid="stMetric"] { background-color: var(--secondary-background-color); padding: 1rem 1.2rem; border-radius: 6px; border: 1px solid var(--background-color); border-left: 4px solid #2D8C5A; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
-div[data-testid="stMetricLabel"] { font-size: 0.8rem !important; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-color) !important; font-weight: 600 !important; opacity: 0.8; }
-div[data-testid="stMetricValue"] { font-size: 1.5rem !important; font-weight: 700 !important; color: var(--text-color) !important; }
+section[data-testid="stSidebar"] { background-color: var(--surface); }
+section[data-testid="stSidebar"] [data-testid="stMarkdownContainer"] h3 { font-family: 'Inter', sans-serif; font-size: 0.7rem !important; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted) !important; font-weight: 500 !important; margin-top: 0.6rem !important; margin-bottom: 0.4rem !important; padding-bottom: 0.3rem; border-bottom: 0.5px solid var(--line); }
+section[data-testid="stSidebar"] [data-testid="stMarkdownContainer"] h2 { font-size: 0.85rem !important; font-weight: 700 !important; color: var(--ink) !important; letter-spacing: -0.01em; margin-bottom: 0.5rem !important; }
+/* ========== Header banner (bandeau carbon) ========== */
+.app-header { background: var(--carbon); padding: 1.6rem 2rem; border-radius: 12px; margin-bottom: 1.2rem; }
+.app-header .logo { font-size: 1.5rem; font-weight: 700; color: #ffffff; letter-spacing: -0.02em; margin: 0; }
+.app-header .logo .asterisk { color: var(--brand); }
+.app-header .logo .pro-tag { font-family: 'Inter', sans-serif; font-size: 0.7rem; font-weight: 500; letter-spacing: 0.08em; color: var(--brand); background: rgba(0,164,180,0.15); border: 0.5px solid rgba(0,164,180,0.5); border-radius: 6px; padding: 0.15rem 0.5rem; margin-left: 0.7rem; vertical-align: middle; text-transform: uppercase; }
+.app-header p { font-size: 0.85rem; color: var(--muted-dark); margin: 0.35rem 0 0 0; font-weight: 400; letter-spacing: 0; }
+/* ========== KPI Metrics (carte-metrique) ========== */
+div[data-testid="stMetric"] { background-color: var(--frost); padding: 1rem 1.2rem; border-radius: 12px; border: 0.5px solid var(--line); }
+div[data-testid="stMetricLabel"] { font-family: 'Inter', sans-serif; font-size: 0.78rem !important; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted) !important; font-weight: 500 !important; }
+div[data-testid="stMetricValue"] { font-size: 1.6rem !important; font-weight: 700 !important; color: var(--ink) !important; letter-spacing: -0.02em; }
 /* ========== Tabs ========== */
-.stTabs [data-baseweb="tab-list"] { gap: 0; border-bottom: 2px solid var(--secondary-background-color); background-color: transparent; }
-.stTabs [data-baseweb="tab"] { font-family: 'Inter', sans-serif; font-weight: 500; font-size: 0.78rem; letter-spacing: 0.2px; padding: 0.7rem 1.4rem; color: var(--text-color); border-bottom: 2px solid transparent; margin-bottom: -2px; background-color: transparent !important; opacity: 0.7; }
-.stTabs [aria-selected="true"] { color: #2D8C5A !important; border-bottom-color: #2D8C5A !important; font-weight: 600; opacity: 1; }
+.stTabs [data-baseweb="tab-list"] { gap: 0; border-bottom: 0.5px solid var(--line); background-color: transparent; }
+.stTabs [data-baseweb="tab"] { font-family: 'Inter', sans-serif; font-weight: 500; font-size: 0.78rem; letter-spacing: 0; padding: 0.7rem 1.4rem; color: var(--muted); border-bottom: 2px solid transparent; margin-bottom: -1px; background-color: transparent !important; }
+.stTabs [aria-selected="true"] { color: var(--brand-deep) !important; border-bottom-color: var(--brand) !important; font-weight: 700; }
 /* ========== Buttons ========== */
-button[data-testid="stBaseButton-primary"] { font-family: 'Inter', sans-serif !important; font-weight: 600 !important; font-size: 0.78rem !important; letter-spacing: 0.4px !important; border-radius: 5px !important; }
-button[data-testid="stBaseButton-secondary"] { font-family: 'Inter', sans-serif !important; font-weight: 500 !important; font-size: 0.75rem !important; border-radius: 5px !important; }
+button[data-testid="stBaseButton-primary"] { font-family: 'Inter', sans-serif !important; font-weight: 500 !important; font-size: 0.78rem !important; letter-spacing: 0 !important; border-radius: 6px !important; background-color: var(--brand) !important; border-color: var(--brand) !important; }
+button[data-testid="stBaseButton-primary"]:hover { background-color: var(--brand-deep) !important; border-color: var(--brand-deep) !important; }
+button[data-testid="stBaseButton-secondary"] { font-family: 'Inter', sans-serif !important; font-weight: 500 !important; font-size: 0.75rem !important; border-radius: 6px !important; border-color: var(--ink) !important; color: var(--ink) !important; }
 /* ========== Dataframes ========== */
-[data-testid="stDataFrame"] { border: 1px solid var(--secondary-background-color); border-radius: 5px; overflow: hidden; }
+[data-testid="stDataFrame"] { border: 0.5px solid var(--line); border-radius: 12px; overflow: hidden; }
 /* ========== Alert / Info boxes ========== */
-.stAlert { border-radius: 5px; font-size: 0.83rem; }
+.stAlert { border-radius: 6px; font-size: 0.83rem; font-family: 'Inter', sans-serif; }
 /* ========== Dividers ========== */
-hr { border-color: var(--secondary-background-color) !important; }
+hr { border-color: var(--line) !important; }
 /* ========== Expander ========== */
-[data-testid="stExpander"] details summary p { font-weight: 500 !important; font-size: 0.82rem !important; color: var(--text-color); }
+[data-testid="stExpander"] details summary p { font-weight: 500 !important; font-size: 0.82rem !important; color: var(--ink); }
 /* ========== Plotly toolbar cleanup ========== */
 .modebar-group { background-color: transparent !important; }
 /* ========== Section titles in main area ========== */
-.section-title { font-size: 0.95rem; font-weight: 600; color: var(--text-color); margin: 1rem 0 0.8rem 0; padding-bottom: 0.4rem; border-bottom: 1px solid var(--secondary-background-color); }
+.section-title { font-size: 0.95rem; font-weight: 700; color: var(--ink); margin: 1rem 0 0.8rem 0; padding-bottom: 0.4rem; border-bottom: 0.5px solid var(--line); letter-spacing: -0.01em; }
 /* ========== Stat card for monitoring ========== */
-.stat-card { background-color: var(--secondary-background-color); border: 1px solid var(--background-color); border-radius: 6px; padding: 0.8rem 1rem; text-align: center; }
-.stat-card .stat-label { font-size: 0.6rem; text-transform: uppercase; letter-spacing: 1px; color: var(--text-color); font-weight: 600; opacity: 0.7; }
-.stat-card .stat-value { font-size: 1.1rem; font-weight: 700; color: var(--text-color); margin-top: 0.2rem; }
+.stat-card { background-color: var(--frost); border: 0.5px solid var(--line); border-radius: 12px; padding: 0.8rem 1rem; text-align: center; }
+.stat-card .stat-label { font-family: 'Inter', sans-serif; font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); font-weight: 500; }
+.stat-card .stat-value { font-family: 'JetBrains Mono', monospace; font-size: 1.1rem; font-weight: 700; color: var(--ink); margin-top: 0.2rem; }
+/* ========== Accessibilite : focus visible ========== */
+*:focus-visible { outline: 2px solid var(--brand-deep) !important; outline-offset: 2px; }
 /* Hide Streamlit branding */
 #MainMenu {visibility: hidden;}
 footer {visibility: hidden;}
 </style>""", unsafe_allow_html=True)
 
-# Matplotlib global style
+# Matplotlib global style (charte "Frost & Carbon" : fond clair, texte muted/ink)
 plt.rcParams.update({
     'font.family': 'sans-serif',
     'font.sans-serif': ['Arial', 'Helvetica Neue', 'DejaVu Sans'],
@@ -148,10 +178,10 @@ plt.rcParams.update({
     'axes.labelsize': 10,
     'figure.facecolor': 'none',
     'axes.facecolor': 'none',
-    'text.color': '#8DA0B3',
-    'axes.labelcolor': '#8DA0B3',
-    'xtick.color': '#8DA0B3',
-    'ytick.color': '#8DA0B3',
+    'text.color': '#555555',
+    'axes.labelcolor': '#555555',
+    'xtick.color': '#555555',
+    'ytick.color': '#555555',
 })
 
 # ============================================================
@@ -189,7 +219,7 @@ def check_password() -> bool:
 
     st.markdown("""
     <div class="app-header">
-        <h1>ALTILEO</h1>
+        <p class="logo">altileo<span class="asterisk">*</span><span class="pro-tag">PRO</span></p>
         <p>Acces reserve</p>
     </div>
     """, unsafe_allow_html=True)
@@ -607,7 +637,7 @@ def temp_refroidissement(t_start: float, dt_h: float, t_consigne: float,
 
 st.markdown("""
 <div class="app-header">
-    <h1>❄️ ALTILEO <span class="app-header-suffix">PRO</span></h1>
+    <p class="logo">altileo<span class="asterisk">*</span><span class="pro-tag">PRO</span></p>
     <p>Plateforme d'audit énergétique et de modélisation financière</p>
 </div>
 """, unsafe_allow_html=True)
@@ -619,7 +649,7 @@ st.markdown("""
 with st.sidebar:
     st.markdown("## Altileo PRO")
 
-    with st.expander("📖 Glossaire des abréviations"):
+    with st.expander("Glossaire des abréviations"):
         st.markdown("""
 - **HP / HC** : Heures Pleines / Heures Creuses (tarif réglementé classique)
 - **CVC** : Chauffage, Ventilation, Climatisation
@@ -633,7 +663,7 @@ with st.sidebar:
         """)
 
     # --- Source de donnees ---
-    st.markdown("### 🗄️ Source de donnees")
+    st.markdown("### Source de donnees")
     available_tables = fetch_available_tables()
     t_name = st.selectbox(
         "Table",
@@ -645,7 +675,7 @@ with st.sidebar:
     detected_sensors = fetch_available_sensors(t_name)
 
     # --- Capteurs d'analyse ---
-    st.markdown("### 📡 Capteurs d'analyse")
+    st.markdown("### Capteurs d'analyse")
     if detected_sensors:
         comp_idx = detected_sensors.index("courant_1") if "courant_1" in detected_sensors else 0
         cvc_idx = detected_sensors.index("courant_2") if "courant_2" in detected_sensors else min(1, len(detected_sensors) - 1)
@@ -659,7 +689,7 @@ with st.sidebar:
             s_cvc = st.text_input("Capteur CVC", "courant_2")
 
     # --- Période d'analyse ---
-    st.markdown("### 📅 Période d'analyse")
+    st.markdown("### Période d'analyse")
     min_date, max_date = fetch_table_date_range(t_name)
     col_d1, col_d2 = st.columns(2)
     with col_d1:
@@ -698,7 +728,7 @@ with st.sidebar:
     st.divider()
 
     # --- Modelisation ---
-    st.markdown("### ⚙️ Modélisation Altileo")
+    st.markdown("### Modélisation Altileo")
     h = st.slider("Délestage HP (heures)", 0.0, 16.0, 5.0, 0.5)
     r = st.slider("Rattrapage HC (%)", 0, 100, 10, 1) / 100.0
     sec = st.slider("Marge de sécurité (%)", 0, 50, 10, 1) / 100.0
@@ -710,7 +740,7 @@ with st.sidebar:
     st.divider()
 
     # --- Perspective Inverter / VFD ---
-    st.markdown("### 🔧 Perspective Inverter / VFD")
+    st.markdown("### Perspective Inverter / VFD")
     equipe_inverter = st.checkbox("Compresseur équipé Inverter / VFD")
     if equipe_inverter:
         gain_usure_an = st.number_input(
@@ -725,7 +755,7 @@ with st.sidebar:
     st.divider()
 
     # --- Déploiement ---
-    st.markdown("### 🚀 Déploiement")
+    st.markdown("### Déploiement")
     nb = st.number_input("Nombre de chambres", min_value=1, value=1)
     pr = st.number_input("Prix installation / chambre (EUR)", value=1500.0)
     cee = st.number_input("Prime CEE globale (EUR)", value=0.0)
@@ -733,7 +763,7 @@ with st.sidebar:
     st.divider()
 
     # --- Simulation Spot ---
-    st.markdown("### ⚡ Simulation Spot")
+    st.markdown("### Simulation Spot")
     spot_source = st.radio("Source des prix Spot", ["Historique annuel 2025 (Sobry)", "Derniers jours réels (API Nord Pool)"])
     spot_delest_h = st.slider("Heures délestées / jour", 0, 12, 5)
     spot_margin = st.number_input("Marge fournisseur fixe (EUR/MWh)", value=0.0, step=1.0)
@@ -915,7 +945,7 @@ if analysis_run:
             derive_max_hchp = temp_max_hchp - t_consigne
 
             # --- Generation des graphiques (en memoire) ---
-            CHART_COLORS = ['#1B3A5C', '#2D8C5A', '#8DA0B3', '#C5CED6']
+            CHART_COLORS = ['#111111', '#00A4B4', '#555555', '#0E7C8C']
             CHART_LABELS = ['HC', 'HP', 'TURPE', 'Taxes']
 
             def draw_chart(s, title):
@@ -958,8 +988,8 @@ if analysis_run:
                     c_av += b_av[i]
                     c_ap += b_ap[i]
 
-                ax.set_title(f"Saison {title} (HT)", pad=20, fontweight="bold", fontsize=11, color='#8DA0B3')
-                ax.set_ylabel("Euros / mois", fontsize=9, color='#8DA0B3')
+                ax.set_title(f"Saison {title} (HT)", pad=20, fontweight="bold", fontsize=11, color='#555555')
+                ax.set_ylabel("Euros / mois", fontsize=9, color='#555555')
 
                 # Ajuster l'axe Y pour eviter que l'annotation soit coupee
                 ax.set_ylim(0, max(c_av, c_ap) * 1.25)
@@ -970,23 +1000,23 @@ if analysis_run:
                     ax.annotate(
                         f"-{g:.0f} EUR\n(-{g / c_av * 100:.1f} %)",
                         xy=(1, c_ap), xytext=(0, c_av * 1.02),
-                        arrowprops=dict(arrowstyle="->", color="#8DA0B3", lw=1.8),
-                        color="#8DA0B3", fontweight="bold", ha='center', va='bottom', fontsize=9,
-                        bbox=dict(boxstyle="round,pad=0.3", fc="#0E1117", ec="#8DA0B3", lw=1)
+                        arrowprops=dict(arrowstyle="->", color="#00A4B4", lw=1.8),
+                        color="#FFFFFF", fontweight="bold", ha='center', va='bottom', fontsize=9,
+                        bbox=dict(boxstyle="round,pad=0.3", fc="#111111", ec="#00A4B4", lw=1)
                     )
 
                 # Legende
                 legend_handles = [Patch(facecolor=c, label=l) for c, l in zip(CHART_COLORS, CHART_LABELS)]
                 ax.legend(
                     handles=legend_handles, loc='upper right', fontsize=8,
-                    framealpha=0.0, edgecolor='none', labelcolor='#8DA0B3'
+                    framealpha=0.0, edgecolor='none', labelcolor='#555555'
                 )
 
                 ax.spines['top'].set_visible(False)
                 ax.spines['right'].set_visible(False)
-                ax.spines['left'].set_color('#8DA0B3')
-                ax.spines['bottom'].set_color('#8DA0B3')
-                ax.tick_params(colors='#8DA0B3')
+                ax.spines['left'].set_color('#E5E5E5')
+                ax.spines['bottom'].set_color('#E5E5E5')
+                ax.tick_params(colors='#555555')
                 fig.tight_layout()
 
                 return fig
@@ -1043,7 +1073,7 @@ with tab_dashboard:
 
         if jours_totaux < 30:
             st.warning(
-                f"⚠️ **Période d'analyse courte ({jours_totaux} jours)** : l'extrapolation annuelle ci-dessous "
+                f"**Période d'analyse courte ({jours_totaux} jours)** : l'extrapolation annuelle ci-dessous "
                 "repose sur peu de données et peut être peu fiable (saisonnalité, jours atypiques). "
                 "À considérer comme une estimation indicative, à confirmer sur une période plus longue."
             )
@@ -1100,9 +1130,9 @@ with tab_dashboard:
         st.divider()
         st.markdown('<p class="section-title">Validation Thermique HACCP</p>', unsafe_allow_html=True)
         if temp_max_hchp > t_max:
-            st.error(f"⚠️ **RISQUE SANITAIRE** : La temperature maximale simulee atteint **{temp_max_hchp:.2f} C**, depassant la limite HACCP de **{t_max:.2f} C**.")
+            st.error(f"**RISQUE SANITAIRE** : La temperature maximale simulee atteint **{temp_max_hchp:.2f} C**, depassant la limite HACCP de **{t_max:.2f} C**.")
         else:
-            st.success(f"✅ **CONFORME** : La temperature maximale simulee est de **{temp_max_hchp:.2f} C** (limite: {t_max:.2f} C).")
+            st.success(f"**CONFORME** : La temperature maximale simulee est de **{temp_max_hchp:.2f} C** (limite: {t_max:.2f} C).")
 
         st.divider()
         
@@ -1149,7 +1179,7 @@ with tab_dashboard:
             
         pdf_bytes = create_pdf()
         st.download_button(
-            label="📄 Telecharger le rapport PDF",
+            label="Telecharger le rapport PDF",
             data=pdf_bytes,
             file_name=f"Altileo_Audit_{date.today().strftime('%Y%m%d')}.pdf",
             mime="application/pdf",
@@ -1264,9 +1294,12 @@ with tab_monitoring:
             df_mon = df_mon.sort_values('timestamp')
 
             # --- Graphique Plotly ---
+            # Palette technique derivee des deux teintes de marque (teal, carbon),
+            # par variations de nuance -- suffisamment de contraste pour plusieurs capteurs
+            # sans sortir de la famille de couleurs Frost & Carbon.
             PLOTLY_COLORS = [
-                '#1B3A5C', '#2D8C5A', '#C4652B', '#7C3E8C',
-                '#B8860B', '#5F7D8E', '#C75D5D', '#4A8C8C'
+                '#00A4B4', '#111111', '#0E7C8C', '#555555',
+                '#0A6470', '#999999', '#5FC4D0', '#333333'
             ]
 
             fig = go.Figure()
@@ -1294,7 +1327,7 @@ with tab_monitoring:
                 hovermode="x unified",
                 plot_bgcolor='rgba(0,0,0,0)',
                 paper_bgcolor='rgba(0,0,0,0)',
-                font=dict(family="Inter, sans-serif", size=10, color='var(--text-color)'),
+                font=dict(family="Inter, sans-serif", size=10, color='#555555'),
                 legend=dict(
                     orientation="h",
                     yanchor="bottom",
@@ -1304,10 +1337,10 @@ with tab_monitoring:
                 ),
                 xaxis=dict(
                     showgrid=True,
-                    gridcolor='rgba(136, 152, 168, 0.2)',
+                    gridcolor='rgba(229,229,229,0.7)',
                     zeroline=False,
                     showline=True,
-                    linecolor='rgba(136, 152, 168, 0.5)',
+                    linecolor='rgba(153,153,153,0.5)',
                     rangeslider=dict(visible=True, thickness=0.04, bgcolor='rgba(0,0,0,0)'),
                 ),
                 yaxis=dict(
@@ -1386,7 +1419,7 @@ with tab_spot:
             valid_hours = [h for h in range(24) if not (2 <= h < 12)]
             top_hours_avg = avg_profile.loc[valid_hours].nlargest(spot_delest_h).index.tolist()
 
-            bar_colors = ['#E74C3C' if hh in top_hours_avg else '#1B3A5C' for hh in range(24)]
+            bar_colors = ['#00A4B4' if hh in top_hours_avg else '#111111' for hh in range(24)]
 
             fig_profile = go.Figure()
             fig_profile.add_trace(go.Bar(
@@ -1399,12 +1432,12 @@ with tab_spot:
                 margin=dict(l=10, r=10, t=40, b=10),
                 plot_bgcolor='rgba(0,0,0,0)',
                 paper_bgcolor='rgba(0,0,0,0)',
-                font=dict(family="Inter", size=10),
-                yaxis=dict(title="EUR / MWh", showgrid=True, gridcolor='rgba(136,152,168,0.2)'),
-                xaxis=dict(showgrid=False, showline=True, linecolor='rgba(136,152,168,0.5)'),
+                font=dict(family="Inter", size=10, color='#555555'),
+                yaxis=dict(title="EUR / MWh", showgrid=True, gridcolor='#E5E5E5'),
+                xaxis=dict(showgrid=False, showline=True, linecolor='#E5E5E5'),
                 title=dict(
-                    text=f"Profil horaire moyen Nord Pool FR -- {spot_delest_h}h délestées/jour (en rouge)",
-                    font=dict(size=13), x=0.5
+                    text=f"Profil horaire moyen Nord Pool FR -- {spot_delest_h}h délestées/jour (en teal)",
+                    font=dict(size=13, color='#111111'), x=0.5
                 ),
                 showlegend=False
             )
@@ -1620,7 +1653,7 @@ with tab_spot:
 
             if total_days < 30:
                 st.warning(
-                    f"⚠️ **Période d'analyse courte ({total_days} jours)** : l'extrapolation annuelle peut être peu "
+                    f"**Période d'analyse courte ({total_days} jours)** : l'extrapolation annuelle peut être peu "
                     "fiable (saisonnalité, jours atypiques). À considérer comme une estimation indicative."
                 )
 
@@ -1650,9 +1683,9 @@ with tab_spot:
 
             st.divider()
             if max_temp_spot > t_max:
-                st.error(f"⚠️ **RISQUE SANITAIRE** : Sur la periode, la temperature maximale simulee a atteint **{max_temp_spot:.2f} C**, depassant la limite HACCP de **{t_max:.2f} C**.")
+                st.error(f"**RISQUE SANITAIRE** : Sur la periode, la temperature maximale simulee a atteint **{max_temp_spot:.2f} C**, depassant la limite HACCP de **{t_max:.2f} C**.")
             else:
-                st.success(f"✅ **CONFORME** : La temperature maximale simulee sur la periode est restee a **{max_temp_spot:.2f} C** (limite: {t_max:.2f} C).")
+                st.success(f"**CONFORME** : La temperature maximale simulee sur la periode est restee a **{max_temp_spot:.2f} C** (limite: {t_max:.2f} C).")
 
             # --- Export PDF Spot ---
             def create_spot_pdf():
@@ -1687,7 +1720,7 @@ with tab_spot:
             st.divider()
             spot_pdf_bytes = create_spot_pdf()
             st.download_button(
-                label="📄 Telecharger le rapport PDF Spot",
+                label="Telecharger le rapport PDF Spot",
                 data=spot_pdf_bytes,
                 file_name=f"Altileo_Audit_Spot_{date.today().strftime('%Y%m%d')}.pdf",
                 mime="application/pdf",
@@ -1706,18 +1739,18 @@ with tab_spot:
             fig_monthly = go.Figure()
             fig_monthly.add_trace(go.Bar(
                 x=monthly_table['Mois'], y=monthly_table['Spot seul (EUR)'],
-                name='Spot SANS Altileo', marker_color='#E74C3C'
+                name='Spot SANS Altileo', marker_color='#D14343'
             ))
             fig_monthly.add_trace(go.Bar(
                 x=monthly_table['Mois'], y=monthly_table['Spot+Altileo (EUR)'],
-                name='Spot AVEC Altileo', marker_color='#2D8C5A'
+                name='Spot AVEC Altileo', marker_color='#2A9D6E'
             ))
             fig_monthly.update_layout(
                 barmode='group',
                 margin=dict(l=10, r=10, t=10, b=10),
                 plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)',
-                font=dict(family="Inter", size=10),
-                yaxis=dict(title="Coût Mensuel (EUR)", showgrid=True, gridcolor='rgba(136,152,168,0.2)'),
+                font=dict(family="Inter", size=10, color='#555555'),
+                yaxis=dict(title="Coût Mensuel (EUR)", showgrid=True, gridcolor='rgba(229,229,229,0.7)'),
                 legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
             )
             st.plotly_chart(fig_monthly, use_container_width=True, config={'displaylogo': False})
@@ -1729,26 +1762,26 @@ with tab_spot:
             fig_evo.add_trace(go.Scatter(
                 x=res_df['date'], y=res_df['avg_price'],
                 mode='lines', name='Prix moyen',
-                line=dict(color='#1B3A5C', width=1.5),
+                line=dict(color='#111111', width=1.5),
                 hovertemplate='%{x|%d/%m/%Y}<br>Moy : %{y:.1f} EUR/MWh<extra></extra>'
             ))
             fig_evo.add_trace(go.Scatter(
                 x=res_df['date'], y=res_df['max_price'],
                 mode='lines', name='Prix max',
-                line=dict(color='#E74C3C', width=1, dash='dot'),
+                line=dict(color='#0E7C8C', width=1, dash='dot'),
                 hovertemplate='%{x|%d/%m/%Y}<br>Max : %{y:.1f} EUR/MWh<extra></extra>'
             ))
             fig_evo.add_trace(go.Scatter(
                 x=res_df['date'], y=res_df['min_price'],
                 mode='lines', name='Prix min',
-                line=dict(color='#2D8C5A', width=1, dash='dot'),
+                line=dict(color='#999999', width=1, dash='dot'),
                 hovertemplate='%{x|%d/%m/%Y}<br>Min : %{y:.1f} EUR/MWh<extra></extra>'
             ))
             fig_evo.update_layout(
                 margin=dict(l=10, r=10, t=10, b=10),
                 plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)',
-                font=dict(family="Inter", size=10),
-                yaxis=dict(title="EUR / MWh", showgrid=True, gridcolor='rgba(136,152,168,0.2)'),
+                font=dict(family="Inter", size=10, color='#555555'),
+                yaxis=dict(title="EUR / MWh", showgrid=True, gridcolor='rgba(229,229,229,0.7)'),
                 xaxis=dict(showgrid=False),
                 legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
                 height=350
@@ -1757,7 +1790,7 @@ with tab_spot:
             fig_compare = go.Figure()
             scenarios = ["Contrat actuel\n(HC/HP)", "Spot seul\n(sans Altileo)", "Spot + Altileo"]
             values = [f_ref_an, cost_spot_annual, cost_altileo_annual + saas * nb]
-            colors_bar = ['#8DA0B3', '#C4652B', '#2D8C5A']
+            colors_bar = ['#111111', '#999999', '#2A9D6E']
             fig_compare.add_trace(go.Bar(
                 x=scenarios, y=values, marker_color=colors_bar,
                 text=[f"{fmt_fr(v, 0)} EUR" for v in values], textposition='outside',
@@ -1766,8 +1799,8 @@ with tab_spot:
             fig_compare.update_layout(
                 margin=dict(l=10, r=10, t=20, b=10),
                 plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)',
-                font=dict(family="Inter", size=11),
-                yaxis=dict(title="EUR / an (HT)", showgrid=True, gridcolor='rgba(136,152,168,0.2)'),
+                font=dict(family="Inter", size=11, color='#555555'),
+                yaxis=dict(title="EUR / an (HT)", showgrid=True, gridcolor='rgba(229,229,229,0.7)'),
                 xaxis=dict(showgrid=False), showlegend=False, height=400
             )
 
@@ -1834,7 +1867,7 @@ with tab_spot:
                 x=monthly_table['Mois'],
                 y=monthly_table['HC/HP de base (EUR)'],
                 name='HC/HP de base (sans delestage)',
-                marker_color='#8DA0B3',
+                marker_color='#999999',
                 text=text_hchp,
                 textposition='outside',
                 hovertemplate='%{customdata}'
@@ -1845,7 +1878,7 @@ with tab_spot:
                 x=monthly_table['Mois'],
                 y=monthly_table['HC/HP avec Altileo (SaaS inc) (EUR)'],
                 name='HC/HP avec Altileo',
-                marker_color='#5A738E',
+                marker_color='#0E7C8C',
                 text=text_hchp_sim,
                 textposition='outside',
                 hovertemplate='%{customdata}'
@@ -1856,7 +1889,7 @@ with tab_spot:
                 x=monthly_table['Mois'],
                 y=monthly_table['Spot seul (EUR)'],
                 name='Spot seul (sans delestage)',
-                marker_color='#C4652B',
+                marker_color='#111111',
                 text=text_spot,
                 textposition='outside',
                 hovertemplate='%{customdata}'
@@ -1867,7 +1900,7 @@ with tab_spot:
                 x=monthly_table['Mois'],
                 y=monthly_table['Spot+Altileo (EUR)'],
                 name='Spot + Altileo',
-                marker_color='#2D8C5A',
+                marker_color='#2A9D6E',
                 text=text_altileo,
                 textposition='outside',
                 hovertemplate='%{customdata}'
@@ -1878,8 +1911,8 @@ with tab_spot:
                 barmode='group',
                 margin=dict(l=10, r=10, t=30, b=10),
                 plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)',
-                font=dict(family="Inter", size=11),
-                yaxis=dict(title="Cout mensuel (EUR HT)", showgrid=True, gridcolor='rgba(136,152,168,0.2)'),
+                font=dict(family="Inter", size=11, color='#555555'),
+                yaxis=dict(title="Cout mensuel (EUR HT)", showgrid=True, gridcolor='rgba(229,229,229,0.7)'),
                 xaxis=dict(showgrid=False),
                 legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
                 height=450
@@ -1947,19 +1980,19 @@ with tab_thermal:
             temp_24h.append(current_t)
             
         fig_24h = go.Figure()
-        fig_24h.add_trace(go.Scatter(x=list(range(25)), y=temp_24h, mode='lines', name='Température Produit', line=dict(color='#C4652B', width=3)))
-        fig_24h.add_hline(y=t_consigne, line_dash="dash", line_color="#2D8C5A", annotation_text=f"Consigne ({t_consigne}°C)", annotation_position="top left")
-        fig_24h.add_hline(y=t_max, line_dash="dash", line_color="#E74C3C", annotation_text=f"Limite HACCP ({t_max}°C)", annotation_position="bottom left")
-        
+        fig_24h.add_trace(go.Scatter(x=list(range(25)), y=temp_24h, mode='lines', name='Température Produit', line=dict(color='#111111', width=3)))
+        fig_24h.add_hline(y=t_consigne, line_dash="dash", line_color="#2A9D6E", annotation_text=f"Consigne ({t_consigne}°C)", annotation_position="top left")
+        fig_24h.add_hline(y=t_max, line_dash="dash", line_color="#D14343", annotation_text=f"Limite HACCP ({t_max}°C)", annotation_position="bottom left")
+
         for hh in shed_hours:
-            fig_24h.add_vrect(x0=hh, x1=hh+1, fillcolor="rgba(231,76,60,0.1)", layer="below", line_width=0)
-            
+            fig_24h.add_vrect(x0=hh, x1=hh+1, fillcolor="rgba(0,164,180,0.1)", layer="below", line_width=0)
+
         fig_24h.update_layout(
-            title="Cycle journalier (24 heures) - Zone rouge = compresseur coupé",
+            title="Cycle journalier (24 heures) - Zone teal = compresseur coupé",
             xaxis_title="Heure de la journée", yaxis_title="Température (°C)",
             margin=dict(l=10, r=10, t=40, b=10), height=350,
-            plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)', font=dict(family="Inter", color='#8DA0B3'),
-            yaxis=dict(showgrid=True, gridcolor='rgba(136,152,168,0.2)'), xaxis=dict(showgrid=False)
+            plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)', font=dict(family="Inter", color='#555555'),
+            yaxis=dict(showgrid=True, gridcolor='rgba(229,229,229,0.7)'), xaxis=dict(showgrid=False)
         )
         
         # --- Simulation 168h (7 jours) ---
@@ -1978,28 +2011,28 @@ with tab_thermal:
         is_conforme = max_168h <= t_max
         
         fig_168h = go.Figure()
-        fig_168h.add_trace(go.Scatter(x=list(range(169)), y=temp_168h, mode='lines', name='Température Produit', line=dict(color='#1B3A5C', width=2)))
-        fig_168h.add_hline(y=t_consigne, line_dash="dash", line_color="#2D8C5A", annotation_text=f"Consigne ({t_consigne}°C)", annotation_position="top left")
-        fig_168h.add_hline(y=t_max, line_dash="dash", line_color="#E74C3C", annotation_text=f"Limite HACCP ({t_max}°C)", annotation_position="bottom left")
+        fig_168h.add_trace(go.Scatter(x=list(range(169)), y=temp_168h, mode='lines', name='Température Produit', line=dict(color='#111111', width=2)))
+        fig_168h.add_hline(y=t_consigne, line_dash="dash", line_color="#2A9D6E", annotation_text=f"Consigne ({t_consigne}°C)", annotation_position="top left")
+        fig_168h.add_hline(y=t_max, line_dash="dash", line_color="#D14343", annotation_text=f"Limite HACCP ({t_max}°C)", annotation_position="bottom left")
         
         for day in range(7):
-            fig_168h.add_vline(x=day*24, line_dash="dot", line_color="rgba(136,152,168,0.5)")
+            fig_168h.add_vline(x=day*24, line_dash="dot", line_color="rgba(153,153,153,0.5)")
             
         fig_168h.update_layout(
             title="Stress Test inertiel (7 jours / 168 heures)",
             xaxis_title="Heure cumulée", yaxis_title="Température (°C)",
             margin=dict(l=10, r=10, t=40, b=10), height=350,
-            plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)', font=dict(family="Inter", color='#8DA0B3'),
-            yaxis=dict(showgrid=True, gridcolor='rgba(136,152,168,0.2)'), xaxis=dict(showgrid=False)
+            plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)', font=dict(family="Inter", color='#555555'),
+            yaxis=dict(showgrid=True, gridcolor='rgba(229,229,229,0.7)'), xaxis=dict(showgrid=False)
         )
         
         # Affichage
         c_kpi1, c_kpi2 = st.columns(2)
         with c_kpi1:
             if is_conforme:
-                st.success(f"✅ **CONFORME** : La température reste stable et le compresseur a le temps de rattraper la consigne chaque jour.")
+                st.success(f"**CONFORME** : La température reste stable et le compresseur a le temps de rattraper la consigne chaque jour.")
             else:
-                st.error(f"⚠️ **RISQUE SANITAIRE** : Dérive thermique détectée. La chaleur s'accumule de jour en jour.")
+                st.error(f"**RISQUE SANITAIRE** : Dérive thermique détectée. La chaleur s'accumule de jour en jour.")
         with c_kpi2:
             st.metric(label="Pic de température sur 7 jours", value=f"{max_168h:.2f} °C", delta=f"{max_168h - t_consigne:+.2f} °C vs consigne", delta_color="inverse")
             
