@@ -19,7 +19,8 @@ from matplotlib.patches import Patch
 # 1. CONFIGURATION DE LA PAGE
 # ============================================================
 st.set_page_config(
-    page_title="Altileo - Audit Énergétique",
+    page_title="Altileo PRO",
+    page_icon="❄️",
     layout="wide",
     initial_sidebar_state="expanded"
 )
@@ -42,6 +43,55 @@ def fmt_fr_signed(value, decimals: int = 0) -> str:
     formatted = fmt_fr(value, decimals)
     return f"+{formatted}" if value >= 0 else formatted
 
+
+# ============================================================
+# 1b. HABILLAGE PDF (couleurs de marque, coherent avec le CSS de l'app)
+# ============================================================
+PDF_BRAND_DARK = (27, 58, 92)
+PDF_BRAND_GREEN = (45, 140, 90)
+PDF_BRAND_GREY = (141, 160, 179)
+
+
+def pdf_add_header(pdf: FPDF, title: str) -> None:
+    """Bandeau de titre aux couleurs Altileo, en tete de chaque rapport PDF."""
+    pdf.set_fill_color(*PDF_BRAND_DARK)
+    pdf.rect(0, 0, 210, 26, style="F")
+    pdf.set_fill_color(*PDF_BRAND_GREEN)
+    pdf.rect(0, 26, 210, 1.2, style="F")
+    pdf.set_xy(10, 8)
+    pdf.set_font("Arial", "B", 18)
+    pdf.set_text_color(255, 255, 255)
+    pdf.cell(0, 10, f"altileo*  {title}", ln=1)
+    pdf.set_y(33)
+    pdf.set_text_color(0, 0, 0)
+    pdf.set_font("Arial", "", 11)
+
+
+def pdf_add_section_title(pdf: FPDF, text: str) -> None:
+    """Titre de section avec lisere vert, coherent avec le design de l'application."""
+    pdf.ln(4)
+    y = pdf.get_y()
+    pdf.set_fill_color(*PDF_BRAND_GREEN)
+    pdf.rect(10, y + 1, 2.2, 6, style="F")
+    pdf.set_xy(14, y)
+    pdf.set_font("Arial", "B", 13)
+    pdf.set_text_color(*PDF_BRAND_DARK)
+    pdf.cell(0, 8, text, ln=1)
+    pdf.set_text_color(0, 0, 0)
+    pdf.set_font("Arial", "", 11)
+
+
+def pdf_add_footer(pdf: FPDF) -> None:
+    """Pied de page discret, coherent sur tous les rapports Altileo."""
+    pdf.set_auto_page_break(False)
+    pdf.set_y(-18)
+    pdf.set_draw_color(*PDF_BRAND_GREY)
+    pdf.line(10, pdf.get_y(), 200, pdf.get_y())
+    pdf.ln(2)
+    pdf.set_font("Arial", "I", 8)
+    pdf.set_text_color(*PDF_BRAND_GREY)
+    pdf.cell(0, 5, f"Altileo -- Rapport genere automatiquement le {date.today().strftime('%d/%m/%Y')}", ln=1, align="C")
+
 # ============================================================
 # 2. DESIGN SYSTEM (CSS)
 # ============================================================
@@ -55,6 +105,7 @@ section[data-testid="stSidebar"] [data-testid="stMarkdownContainer"] h2 { font-s
 /* ========== Header banner ========== */
 .app-header { background: linear-gradient(135deg, #1B3A5C 0%, #264d73 60%, #1B3A5C 100%); padding: 1.6rem 2rem; border-radius: 6px; margin-bottom: 1.2rem; }
 .app-header h1 { font-size: 1.5rem; font-weight: 700; color: #ffffff; letter-spacing: 3px; margin: 0; }
+.app-header h1 .app-header-suffix { font-size: 0.75rem; font-weight: 600; letter-spacing: 2px; color: #2D8C5A; background: rgba(45,140,90,0.18); border: 1px solid rgba(45,140,90,0.5); border-radius: 4px; padding: 0.15rem 0.45rem; margin-left: 0.6rem; vertical-align: middle; }
 .app-header p { font-size: 0.8rem; color: #a3bdd4; margin: 0.3rem 0 0 0; font-weight: 400; letter-spacing: 0.4px; }
 /* ========== KPI Metrics ========== */
 div[data-testid="stMetric"] { background-color: var(--secondary-background-color); padding: 1rem 1.2rem; border-radius: 6px; border: 1px solid var(--background-color); border-left: 4px solid #2D8C5A; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
@@ -556,7 +607,7 @@ def temp_refroidissement(t_start: float, dt_h: float, t_consigne: float,
 
 st.markdown("""
 <div class="app-header">
-    <h1>ALTILEO</h1>
+    <h1>❄️ ALTILEO <span class="app-header-suffix">PRO</span></h1>
     <p>Plateforme d'audit énergétique et de modélisation financière</p>
 </div>
 """, unsafe_allow_html=True)
@@ -582,7 +633,7 @@ with st.sidebar:
         """)
 
     # --- Source de donnees ---
-    st.markdown("### Source de donnees")
+    st.markdown("### 🗄️ Source de donnees")
     available_tables = fetch_available_tables()
     t_name = st.selectbox(
         "Table",
@@ -594,7 +645,7 @@ with st.sidebar:
     detected_sensors = fetch_available_sensors(t_name)
 
     # --- Capteurs d'analyse ---
-    st.markdown("### Capteurs d'analyse")
+    st.markdown("### 📡 Capteurs d'analyse")
     if detected_sensors:
         comp_idx = detected_sensors.index("courant_1") if "courant_1" in detected_sensors else 0
         cvc_idx = detected_sensors.index("courant_2") if "courant_2" in detected_sensors else min(1, len(detected_sensors) - 1)
@@ -608,7 +659,7 @@ with st.sidebar:
             s_cvc = st.text_input("Capteur CVC", "courant_2")
 
     # --- Période d'analyse ---
-    st.markdown("### Période d'analyse")
+    st.markdown("### 📅 Période d'analyse")
     min_date, max_date = fetch_table_date_range(t_name)
     col_d1, col_d2 = st.columns(2)
     with col_d1:
@@ -647,7 +698,7 @@ with st.sidebar:
     st.divider()
 
     # --- Modelisation ---
-    st.markdown("### Modélisation Altileo")
+    st.markdown("### ⚙️ Modélisation Altileo")
     h = st.slider("Délestage HP (heures)", 0.0, 16.0, 5.0, 0.5)
     r = st.slider("Rattrapage HC (%)", 0, 100, 10, 1) / 100.0
     sec = st.slider("Marge de sécurité (%)", 0, 50, 10, 1) / 100.0
@@ -659,7 +710,7 @@ with st.sidebar:
     st.divider()
 
     # --- Perspective Inverter / VFD ---
-    st.markdown("### Perspective Inverter / VFD")
+    st.markdown("### 🔧 Perspective Inverter / VFD")
     equipe_inverter = st.checkbox("Compresseur équipé Inverter / VFD")
     if equipe_inverter:
         gain_usure_an = st.number_input(
@@ -674,7 +725,7 @@ with st.sidebar:
     st.divider()
 
     # --- Déploiement ---
-    st.markdown("### Déploiement")
+    st.markdown("### 🚀 Déploiement")
     nb = st.number_input("Nombre de chambres", min_value=1, value=1)
     pr = st.number_input("Prix installation / chambre (EUR)", value=1500.0)
     cee = st.number_input("Prime CEE globale (EUR)", value=0.0)
@@ -682,7 +733,7 @@ with st.sidebar:
     st.divider()
 
     # --- Simulation Spot ---
-    st.markdown("### Simulation Spot")
+    st.markdown("### ⚡ Simulation Spot")
     spot_source = st.radio("Source des prix Spot", ["Historique annuel 2025 (Sobry)", "Derniers jours réels (API Nord Pool)"])
     spot_delest_h = st.slider("Heures délestées / jour", 0, 12, 5)
     spot_margin = st.number_input("Marge fournisseur fixe (EUR/MWh)", value=0.0, step=1.0)
@@ -1059,13 +1110,8 @@ with tab_dashboard:
         def create_pdf():
             pdf = FPDF()
             pdf.add_page()
-            pdf.set_font("Arial", "B", 16)
-            pdf.set_text_color(27, 58, 92)
-            pdf.cell(0, 10, "Rapport d'Audit Energetique Altileo", ln=1, align="C")
-            
-            pdf.set_font("Arial", "", 11)
-            pdf.set_text_color(0, 0, 0)
-            pdf.ln(5)
+            pdf_add_header(pdf, "Rapport d'Audit Energetique")
+
             pdf.cell(0, 6, f"Date de l'audit : {date.today().strftime('%d/%m/%Y')}", ln=1)
             try:
                 pdf.cell(0, 6, f"Periode analysee : du {d_start.strftime('%d/%m/%Y')} au {d_end.strftime('%d/%m/%Y')}", ln=1)
@@ -1073,14 +1119,8 @@ with tab_dashboard:
                 pdf.cell(0, 6, f"Periode analysee : du {d_start} au {d_end}", ln=1)
             pdf.cell(0, 6, f"Nombre de chambres equipees : {nb}", ln=1)
             pdf.cell(0, 6, f"Delestage programme : {h} heures/jour", ln=1)
-            
-            pdf.ln(5)
-            pdf.set_font("Arial", "B", 14)
-            pdf.set_text_color(27, 58, 92)
-            pdf.cell(0, 10, "Resultats Financiers (HT)", ln=1)
-            
-            pdf.set_font("Arial", "", 11)
-            pdf.set_text_color(0, 0, 0)
+
+            pdf_add_section_title(pdf, "Resultats Financiers (HT)")
             pdf.cell(0, 6, f"Facture de référence : {fmt_fr(f_ref_an, 0)} EUR/an", ln=1)
             pdf.cell(0, 6, f"Gain d'exploitation brut : {fmt_fr(gain_an_brut, 0)} EUR/an", ln=1)
             pdf.cell(0, 6, f"Abonnement SaaS : {fmt_fr(saas * nb, 0)} EUR/an", ln=1)
@@ -1093,20 +1133,18 @@ with tab_dashboard:
             pdf.cell(0, 5, f"(facteur retenu : {CO2_FACTOR_KG_PER_KWH * 1000:.0f} gCO2/kWh -- {CO2_FACTOR_SOURCE})", ln=1)
             pdf.set_font("Arial", "", 11)
             pdf.cell(0, 6, f"Validation HACCP : {'ECHEC' if temp_max_hchp > t_max else 'CONFORME'} (Temp max: {temp_max_hchp:.2f} C)", ln=1)
-            
-            pdf.ln(10)
-            pdf.set_font("Arial", "B", 14)
-            pdf.set_text_color(27, 58, 92)
-            pdf.cell(0, 10, "Modelisation Mensuelle", ln=1)
-            
+
+            pdf_add_section_title(pdf, "Modelisation Mensuelle")
+
             img_h = io.BytesIO()
             fig_h.savefig(img_h, format='png', bbox_inches='tight')
             pdf.image(img_h, x=10, y=pdf.get_y(), w=90)
-            
+
             img_e = io.BytesIO()
             fig_e.savefig(img_e, format='png', bbox_inches='tight')
             pdf.image(img_e, x=110, y=pdf.get_y(), w=90)
-            
+
+            pdf_add_footer(pdf)
             return bytes(pdf.output())
             
         pdf_bytes = create_pdf()
@@ -1620,27 +1658,16 @@ with tab_spot:
             def create_spot_pdf():
                 pdf = FPDF()
                 pdf.add_page()
-                pdf.set_font("Arial", "B", 16)
-                pdf.set_text_color(27, 58, 92)
-                pdf.cell(0, 10, "Rapport d'Audit Energetique Altileo (Simulation Spot)", ln=1, align="C")
-                
-                pdf.set_font("Arial", "", 11)
-                pdf.set_text_color(0, 0, 0)
-                pdf.ln(5)
+                pdf_add_header(pdf, "Rapport d'Audit (Simulation Spot)")
+
                 pdf.cell(0, 6, f"Date de l'audit : {date.today().strftime('%d/%m/%Y')}", ln=1)
                 pdf.cell(0, 6, f"Nombre de chambres equipees : {nb}", ln=1)
                 pdf.cell(0, 6, f"Delestage programme (Spot) : {spot_delest_h} heures/jour", ln=1)
                 pdf.cell(0, 6, f"Marge fixe Spot : {spot_margin} EUR/MWh", ln=1)
                 pdf.cell(0, 6, f"Marge proportionnelle Spot (Sobry) : {spot_margin_pct} %", ln=1)
                 pdf.cell(0, 6, f"Periode etudiee : {total_days} jours (Moyenne : {spot_avg_overall:.1f} EUR/MWh)", ln=1)
-                
-                pdf.ln(5)
-                pdf.set_font("Arial", "B", 14)
-                pdf.set_text_color(27, 58, 92)
-                pdf.cell(0, 10, f"Resultats Financiers sur la periode de {total_days} jours (HT)", ln=1)
-                
-                pdf.set_font("Arial", "", 11)
-                pdf.set_text_color(0, 0, 0)
+
+                pdf_add_section_title(pdf, f"Resultats Financiers sur la periode de {total_days} jours (HT)")
                 pdf.cell(0, 6, f"Facture contrat actuel (HC/HP) : {fmt_fr(cost_hchp_tot, 0)} EUR", ln=1)
                 pdf.cell(0, 6, f"Facture Spot SANS Altileo : {fmt_fr(cost_spot_tot, 0)} EUR", ln=1)
                 pdf.cell(0, 6, f"Facture Spot AVEC Altileo : {fmt_fr(c_alt_tot, 0)} EUR", ln=1)
@@ -1653,7 +1680,8 @@ with tab_spot:
                 pdf.cell(0, 5, f"(facteur retenu : {CO2_FACTOR_KG_PER_KWH * 1000:.0f} gCO2/kWh -- {CO2_FACTOR_SOURCE})", ln=1)
                 pdf.set_font("Arial", "", 11)
                 pdf.cell(0, 6, f"Validation HACCP : {'ECHEC' if max_temp_spot > t_max else 'CONFORME'} (Temp max: {max_temp_spot:.2f} C)", ln=1)
-                
+
+                pdf_add_footer(pdf)
                 return bytes(pdf.output())
 
             st.divider()
