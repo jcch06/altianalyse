@@ -24,6 +24,24 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
+# Facteur d'emission moyen du reseau electrique francais (source : ADEME Base
+# Carbone / RTE, moyenne annuelle ~50 gCO2/kWh). A ajuster si une source plus
+# recente ou specifique au contrat du client est disponible.
+CO2_FACTOR_KG_PER_KWH = 0.05
+CO2_FACTOR_SOURCE = "ADEME Base Carbone / RTE, moyenne annuelle FR ~50 gCO2/kWh"
+
+
+def fmt_fr(value, decimals: int = 0) -> str:
+    """Formate un nombre en convention francaise (espace = separateur de milliers, virgule = decimale)."""
+    s = f"{value:,.{decimals}f}"
+    return s.replace(",", "\x00").replace(".", ",").replace("\x00", " ")
+
+
+def fmt_fr_signed(value, decimals: int = 0) -> str:
+    """Comme fmt_fr, avec un signe + explicite pour les valeurs positives ou nulles."""
+    formatted = fmt_fr(value, decimals)
+    return f"+{formatted}" if value >= 0 else formatted
+
 # ============================================================
 # 2. DESIGN SYSTEM (CSS)
 # ============================================================
@@ -500,6 +518,39 @@ def load_excel_prices_2025():
 
 
 # ============================================================
+# 6c. FONCTIONS : THERMIQUE (MODELE ASYMPTOTIQUE)
+# ============================================================
+# Les pentes mesurees a Rungis (+0.21 C/h de rechauffement, -0.70 C/h de
+# refroidissement) sont des taux INITIAUX, mesures au voisinage de la
+# consigne. Physiquement, une chambre froide se rapproche exponentiellement
+# de son point d'equilibre (loi de refroidissement de Newton) : la derive
+# ralentit a mesure qu'elle s'eloigne de la consigne (rechauffement) ou
+# qu'elle s'en rapproche a nouveau (refroidissement). Le modele lineaire
+# simple restait correct sur la fenetre testee (~4h) mais surestime la
+# derive sur des delestages plus longs (MCP, nuit complete).
+
+
+def temp_rechauffement(t_start: float, dt_h: float, t_ambiante: float,
+                        pente_rechauffement: float, t_consigne: float) -> float:
+    """Rechauffement asymptotique vers la temperature ambiante d'equilibre.
+    Conserve le taux initial mesure (pente_rechauffement) au voisinage de la consigne."""
+    if t_ambiante <= t_consigne or pente_rechauffement <= 0:
+        return t_start + pente_rechauffement * dt_h
+    tau = (t_ambiante - t_consigne) / pente_rechauffement
+    return t_ambiante - (t_ambiante - t_start) * math.exp(-dt_h / tau)
+
+
+def temp_refroidissement(t_start: float, dt_h: float, t_consigne: float,
+                          pente_refroidissement: float) -> float:
+    """Refroidissement asymptotique vers la consigne : la recharge ralentit
+    a mesure que l'ecart avec la consigne se reduit (taux de reference calibre a 1 C d'ecart)."""
+    if t_start <= t_consigne or pente_refroidissement >= 0:
+        return t_consigne
+    tau = 1.0 / abs(pente_refroidissement)
+    return t_consigne + (t_start - t_consigne) * math.exp(-dt_h / tau)
+
+
+# ============================================================
 # 7. INTERFACE : EN-TETE
 # ============================================================
 
@@ -516,6 +567,19 @@ st.markdown("""
 
 with st.sidebar:
     st.markdown("## Altileo PRO")
+
+    with st.expander("📖 Glossaire des abréviations"):
+        st.markdown("""
+- **HP / HC** : Heures Pleines / Heures Creuses (tarif réglementé classique)
+- **CVC** : Chauffage, Ventilation, Climatisation
+- **MCP** : Matériau à Changement de Phase (stockage thermique, alternative aux batteries lithium)
+- **COP** : Coefficient de Performance (rendement thermodynamique du compresseur)
+- **TURPE** : Tarif d'Utilisation des Réseaux Publics d'Électricité (frais d'acheminement)
+- **HACCP** : Hazard Analysis Critical Control Point (norme sécurité sanitaire des denrées)
+- **Spot** : Prix de gros de l'électricité, fixé heure par heure la veille pour le lendemain (Day-Ahead)
+- **Inverter / VFD** : Variateur de fréquence, permet de moduler en continu la vitesse du compresseur
+- **ROI** : Retour sur investissement
+        """)
 
     # --- Source de donnees ---
     st.markdown("### Source de donnees")
@@ -567,8 +631,18 @@ with st.sidebar:
     with st.expander("Paramètres thermiques (HACCP)"):
         t_consigne = st.number_input("Température consigne (°C)", value=-18.0, step=0.5)
         t_max = st.number_input("Limite HACCP (°C)", value=-15.0, step=0.5)
-        pente_rechauffement = st.number_input("Réchauffement (°C/h)", value=0.21, step=0.01)
-        pente_refroidissement = st.number_input("Refroidissement (°C/h)", value=-0.70, step=0.05)
+        pente_rechauffement = st.number_input(
+            "Réchauffement initial (°C/h)", value=0.21, step=0.01,
+            help="Taux mesuré au voisinage de la consigne (test Rungis). Le modèle ralentit ensuite cette dérive de façon asymptotique."
+        )
+        pente_refroidissement = st.number_input(
+            "Refroidissement initial (°C/h)", value=-0.70, step=0.05,
+            help="Taux de recharge mesuré à 1°C d'écart de la consigne. Le modèle ralentit la recharge à mesure que la consigne est approchée."
+        )
+        t_ambiante = st.number_input(
+            "Température ambiante d'équilibre (°C)", value=12.0, step=1.0,
+            help="Température vers laquelle la chambre dériverait si le compresseur restait coupé indéfiniment (charge thermique du bâtiment). Détermine la courbure du réchauffement."
+        )
 
     st.divider()
 
@@ -581,6 +655,21 @@ with st.sidebar:
 
     abo = st.number_input("Gain abonnement kVA (EUR/mois/ch)", value=0.0)
     saas = st.number_input("Abonnement SaaS (EUR/an/ch)", value=240.0)
+
+    st.divider()
+
+    # --- Perspective Inverter / VFD ---
+    st.markdown("### Perspective Inverter / VFD")
+    equipe_inverter = st.checkbox("Compresseur équipé Inverter / VFD")
+    if equipe_inverter:
+        gain_usure_an = st.number_input(
+            "Gain usure mécanique estimé (EUR/an/chambre)", value=50.0, step=10.0,
+            help="Estimation qualitative de l'usure évitée (moins de cycles marche/arrêt, pics de courant réduits "
+                 "au démarrage — cf. section 6 de la note technique). Aucun modèle physique validé à ce jour : "
+                 "valeur à ajuster manuellement selon le retour terrain."
+        )
+    else:
+        gain_usure_an = 0.0
 
     st.divider()
 
@@ -742,20 +831,22 @@ if analysis_run:
                 k_sauves_tot += (k_effaces - k_rattrapes)
                 
                 saas_mois = (saas * nb) * (jours / 365.0)
-                
+                usure_mois = (gain_usure_an * nb) * (jours / 365.0)
+
                 hchp_monthly_results.append({
                     'mois_num': m,
                     'mois_nom': noms_mois[m],
                     'saison': saison,
                     'jours': jours,
                     'cout_base': total_ht_base,
-                    'cout_sim': total_ht_sim + saas_mois,
-                    'gain_net': gain_mois - saas_mois
+                    'cout_sim': total_ht_sim + saas_mois - usure_mois,
+                    'gain_net': gain_mois - saas_mois + usure_mois
                 })
 
             jours_totaux = sum(jours_par_mois[m] for m in mois_dispos)
             saas_tot = (saas * nb) * (jours_totaux / 365.0)
-            gain_tot_net = gain_tot_brut - saas_tot
+            usure_tot = (gain_usure_an * nb) * (jours_totaux / 365.0)
+            gain_tot_net = gain_tot_brut - saas_tot + usure_tot
             pct = (gain_tot_brut / f_ref_tot * 100) if f_ref_tot > 0 else 0
             
             i_net = max(0, pr * nb - cee)
@@ -768,9 +859,9 @@ if analysis_run:
             gain_an_net = gain_tot_net * (365.0 / jours_totaux) if jours_totaux > 0 else 0.0
             k_sauves_an = k_sauves_tot * (365.0 / jours_totaux) if jours_totaux > 0 else 0.0
 
-            # Calcul thermique theorique
-            derive_max_hchp = h * pente_rechauffement
-            temp_max_hchp = t_consigne + derive_max_hchp
+            # Calcul thermique theorique (rechauffement asymptotique sur h heures continues)
+            temp_max_hchp = temp_rechauffement(t_consigne, h, t_ambiante, pente_rechauffement, t_consigne)
+            derive_max_hchp = temp_max_hchp - t_consigne
 
             # --- Generation des graphiques (en memoire) ---
             CHART_COLORS = ['#1B3A5C', '#2D8C5A', '#8DA0B3', '#C5CED6']
@@ -884,47 +975,55 @@ with tab_dashboard:
             g_net = res['gain_net']
             
             with c1:
-                st.metric("HC/HP Classique", f"{c_base:,.0f} EUR")
+                st.metric("HC/HP Classique", f"{fmt_fr(c_base, 0)} EUR")
             with c2:
                 # empty column to keep alignment with Spot
                 st.write("")
             with c3:
                 d = ((c_sim - c_base)/c_base*100) if c_base > 0 else 0
                 saving = c_sim - c_base
-                st.metric("HC/HP AVEC Altileo", f"{c_sim:,.0f} EUR", f"{d:+.1f}% ({saving:+,.0f} EUR) vs Classique", delta_color="inverse")
+                st.metric("HC/HP AVEC Altileo", f"{fmt_fr(c_sim, 0)} EUR", f"{d:+.1f}% ({fmt_fr_signed(saving, 0)} EUR) vs Classique", delta_color="inverse")
             with c4:
-                st.metric("Gain Net Mensuel", f"{g_net:,.0f} EUR")
+                st.metric("Gain Net Mensuel", f"{fmt_fr(g_net, 0)} EUR")
             st.write("")
 
         st.divider()
         st.markdown(f'<p class="section-title">Synthèse globale sur la période étudiée ({jours_totaux} jours)</p>', unsafe_allow_html=True)
 
+        if jours_totaux < 30:
+            st.warning(
+                f"⚠️ **Période d'analyse courte ({jours_totaux} jours)** : l'extrapolation annuelle ci-dessous "
+                "repose sur peu de données et peut être peu fiable (saisonnalité, jours atypiques). "
+                "À considérer comme une estimation indicative, à confirmer sur une période plus longue."
+            )
+
         col1, col2, col3, col4, col5 = st.columns(5)
         with col1:
             st.metric(
                 label="Facture de référence",
-                value=f"{f_ref_tot:,.0f} EUR",
-                delta=f"{k_ref_tot:,.0f} kWh",
+                value=f"{fmt_fr(f_ref_tot, 0)} EUR",
+                delta=f"{fmt_fr(k_ref_tot, 0)} kWh",
                 delta_color="off"
             )
         with col2:
             st.metric(
                 label="Gain Brut d'exploit.",
-                value=f"{gain_tot_brut:,.0f} EUR",
+                value=f"{fmt_fr(gain_tot_brut, 0)} EUR",
                 delta="Avant abo SaaS",
                 delta_color="off"
             )
         with col3:
             st.metric(
                 label="Gain Net d'exploit.",
-                value=f"{gain_tot_net:,.0f} EUR",
-                delta=f"+{gain_tot_net:,.0f} EUR (-{pct:.1f}% brut)"
+                value=f"{fmt_fr(gain_tot_net, 0)} EUR",
+                delta=f"+{fmt_fr(gain_tot_net, 0)} EUR (-{pct:.1f}% brut)"
             )
         with col4:
             st.metric(
                 label="Impact environnemental",
-                value=f"{(k_sauves_tot * 0.05) / 1000:,.1f} t",
-                delta="CO2 evite"
+                value=f"{fmt_fr((k_sauves_tot * CO2_FACTOR_KG_PER_KWH) / 1000, 1)} t",
+                delta="CO2 evite",
+                help=f"Calcule avec un facteur de {CO2_FACTOR_KG_PER_KWH * 1000:.0f} gCO2/kWh ({CO2_FACTOR_SOURCE})"
             )
         with col5:
             st.metric(
@@ -944,6 +1043,8 @@ with tab_dashboard:
         with param_col2:
             st.markdown(f"**Rattrapage thermique :** {r * 100:.0f} % (marge securite {sec * 100:.0f} %)")
             st.markdown(f"**Abonnement SaaS :** {saas * nb:.0f} EUR / an")
+            if equipe_inverter:
+                st.markdown(f"**Gain usure mécanique (Inverter, estimation) :** {gain_usure_an * nb:.0f} EUR / an")
 
         st.divider()
         st.markdown('<p class="section-title">Validation Thermique HACCP</p>', unsafe_allow_html=True)
@@ -980,12 +1081,17 @@ with tab_dashboard:
             
             pdf.set_font("Arial", "", 11)
             pdf.set_text_color(0, 0, 0)
-            pdf.cell(0, 6, f"Facture de référence : {f_ref_an:,.0f} EUR/an", ln=1)
-            pdf.cell(0, 6, f"Gain d'exploitation brut : {gain_an_brut:,.0f} EUR/an", ln=1)
-            pdf.cell(0, 6, f"Abonnement SaaS : {saas * nb:,.0f} EUR/an", ln=1)
-            pdf.cell(0, 6, f"Gain d'exploitation NET : {gain_an_net:,.0f} EUR/an", ln=1)
+            pdf.cell(0, 6, f"Facture de référence : {fmt_fr(f_ref_an, 0)} EUR/an", ln=1)
+            pdf.cell(0, 6, f"Gain d'exploitation brut : {fmt_fr(gain_an_brut, 0)} EUR/an", ln=1)
+            pdf.cell(0, 6, f"Abonnement SaaS : {fmt_fr(saas * nb, 0)} EUR/an", ln=1)
+            if equipe_inverter:
+                pdf.cell(0, 6, f"Gain usure mecanique (Inverter, estimation) : {fmt_fr(gain_usure_an * nb, 0)} EUR/an", ln=1)
+            pdf.cell(0, 6, f"Gain d'exploitation NET : {fmt_fr(gain_an_net, 0)} EUR/an", ln=1)
             pdf.cell(0, 6, f"Retour sur investissement (ROI) : {roi:.1f} mois (soit {roi/12:.1f} ans)", ln=1)
-            pdf.cell(0, 6, f"Impact carbone : {(k_sauves_an * 0.05) / 1000:,.1f} tonnes de CO2 evitees/an", ln=1)
+            pdf.cell(0, 6, f"Impact carbone : {fmt_fr((k_sauves_an * CO2_FACTOR_KG_PER_KWH) / 1000, 1)} tonnes de CO2 evitees/an", ln=1)
+            pdf.set_font("Arial", "I", 8)
+            pdf.cell(0, 5, f"(facteur retenu : {CO2_FACTOR_KG_PER_KWH * 1000:.0f} gCO2/kWh -- {CO2_FACTOR_SOURCE})", ln=1)
+            pdf.set_font("Arial", "", 11)
             pdf.cell(0, 6, f"Validation HACCP : {'ECHEC' if temp_max_hchp > t_max else 'CONFORME'} (Temp max: {temp_max_hchp:.2f} C)", ln=1)
             
             pdf.ln(10)
@@ -1334,9 +1440,9 @@ with tab_spot:
                 max_temp_day = t_consigne
                 for hh in range(24):
                     if hh in delest_hours_day:
-                        current_temp += pente_rechauffement
+                        current_temp = temp_rechauffement(current_temp, 1.0, t_ambiante, pente_rechauffement, t_consigne)
                     else:
-                        current_temp = max(t_consigne, current_temp + pente_refroidissement)
+                        current_temp = temp_refroidissement(current_temp, 1.0, t_consigne, pente_refroidissement)
                     if current_temp > max_temp_day:
                         max_temp_day = current_temp
 
@@ -1428,10 +1534,11 @@ with tab_spot:
             kwh_saved_tot = res_df['kwh_saved'].sum() * nb
             gain_spot_brut = cost_spot_tot - cost_altileo_tot
             
-            # Prorata SaaS sur la periode analysee
+            # Prorata SaaS et gain usure mecanique sur la periode analysee
             saas_periode = (saas * nb) * (total_days / 365.0)
-            gain_spot_net = gain_spot_brut - saas_periode
-            gain_vs_actuel = cost_hchp_tot - (cost_altileo_tot + saas_periode)
+            usure_periode = (gain_usure_an * nb) * (total_days / 365.0)
+            gain_spot_net = gain_spot_brut - saas_periode + usure_periode
+            gain_vs_actuel = cost_hchp_tot - (cost_altileo_tot + saas_periode - usure_periode)
             max_temp_spot = res_df['max_temp'].max()
 
             # Extrapolation annuelle pour le graphique de comparaison
@@ -1450,46 +1557,58 @@ with tab_spot:
                 c_spot = row['cout_spot']
                 c_alt = row['cout_altileo']
                 saas_mois = (saas * nb) * (j / 365.0)
-                g_net = row['gain'] - saas_mois
-                
+                usure_mois = (gain_usure_an * nb) * (j / 365.0)
+                c_alt_net_mois = c_alt + saas_mois - usure_mois
+                g_net = row['gain'] - saas_mois + usure_mois
+
                 st.markdown(f"**Bilan {mois_nom} ({j} jours)**")
                 k1, k2, k3, k4 = st.columns(4)
                 with k1:
-                    st.metric(label="HC/HP", value=f"{c_hc:,.0f} EUR")
+                    st.metric(label="HC/HP", value=f"{fmt_fr(c_hc, 0)} EUR")
                 with k2:
                     d1 = ((c_spot - c_hc)/c_hc*100) if c_hc>0 else 0
                     diff1 = c_spot - c_hc
-                    st.metric(label="Spot SANS Altileo", value=f"{c_spot:,.0f} EUR", delta=f"{d1:+.1f}% ({diff1:+,.0f} EUR) vs HC/HP", delta_color="inverse")
+                    st.metric(label="Spot SANS Altileo", value=f"{fmt_fr(c_spot, 0)} EUR", delta=f"{d1:+.1f}% ({fmt_fr_signed(diff1, 0)} EUR) vs HC/HP", delta_color="inverse")
                 with k3:
-                    d2 = ((c_alt + saas_mois - c_hc)/c_hc*100) if c_hc>0 else 0
-                    diff2 = (c_alt + saas_mois) - c_hc
-                    st.metric(label="Spot AVEC Altileo", value=f"{(c_alt + saas_mois):,.0f} EUR", delta=f"{d2:+.1f}% ({diff2:+,.0f} EUR) vs HC/HP", delta_color="inverse")
+                    d2 = ((c_alt_net_mois - c_hc)/c_hc*100) if c_hc>0 else 0
+                    diff2 = c_alt_net_mois - c_hc
+                    st.metric(label="Spot AVEC Altileo", value=f"{fmt_fr(c_alt_net_mois, 0)} EUR", delta=f"{d2:+.1f}% ({fmt_fr_signed(diff2, 0)} EUR) vs HC/HP", delta_color="inverse")
                 with k4:
-                    st.metric(label="Gain Net Mensuel", value=f"{g_net:,.0f} EUR")
+                    st.metric(label="Gain Net Mensuel", value=f"{fmt_fr(g_net, 0)} EUR")
                 st.write("") # spacing
 
             st.divider()
             st.markdown(f'<p class="section-title">Resume de la periode ({spot_start_date.strftime("%d/%m/%Y")} au {spot_end_date.strftime("%d/%m/%Y")})</p>', unsafe_allow_html=True)
-            
+
+            if total_days < 30:
+                st.warning(
+                    f"⚠️ **Période d'analyse courte ({total_days} jours)** : l'extrapolation annuelle peut être peu "
+                    "fiable (saisonnalité, jours atypiques). À considérer comme une estimation indicative."
+                )
+
             c_hc_tot = cost_hchp_tot
             c_spot_tot = cost_spot_tot
-            c_alt_tot = cost_altileo_tot + saas_periode
+            c_alt_tot = cost_altileo_tot + saas_periode - usure_periode
             
             kpi1, kpi2, kpi3, kpi4, kpi5 = st.columns(5)
             with kpi1:
-                st.metric("HC/HP Classique", f"{c_hc_tot:,.0f} EUR", f"Sur {total_days} jours", delta_color="off")
+                st.metric("HC/HP Classique", f"{fmt_fr(c_hc_tot, 0)} EUR", f"Sur {total_days} jours", delta_color="off")
             with kpi2:
                 d1_tot = ((c_spot_tot - c_hc_tot)/c_hc_tot*100) if c_hc_tot > 0 else 0
                 diff1_tot = c_spot_tot - c_hc_tot
-                st.metric("Spot SANS Altileo", f"{c_spot_tot:,.0f} EUR", f"{d1_tot:+.1f}% ({diff1_tot:+,.0f} EUR) vs HC/HP", delta_color="inverse")
+                st.metric("Spot SANS Altileo", f"{fmt_fr(c_spot_tot, 0)} EUR", f"{d1_tot:+.1f}% ({fmt_fr_signed(diff1_tot, 0)} EUR) vs HC/HP", delta_color="inverse")
             with kpi3:
                 d2_tot = ((c_alt_tot - c_hc_tot)/c_hc_tot*100) if c_hc_tot > 0 else 0
                 diff2_tot = c_alt_tot - c_hc_tot
-                st.metric("Spot AVEC Altileo", f"{c_alt_tot:,.0f} EUR", f"{d2_tot:+.1f}% ({diff2_tot:+,.0f} EUR) vs HC/HP", delta_color="inverse")
+                st.metric("Spot AVEC Altileo", f"{fmt_fr(c_alt_tot, 0)} EUR", f"{d2_tot:+.1f}% ({fmt_fr_signed(diff2_tot, 0)} EUR) vs HC/HP", delta_color="inverse")
             with kpi4:
-                st.metric("Gain vs Actuel", f"{gain_vs_actuel:,.0f} EUR", "Spot+Altileo vs HC/HP", delta_color="normal")
+                st.metric("Gain vs Actuel", f"{fmt_fr(gain_vs_actuel, 0)} EUR", "Spot+Altileo vs HC/HP", delta_color="normal")
             with kpi5:
-                st.metric("kWh economises", f"{kwh_saved_tot:,.0f} kWh", f"{(kwh_saved_tot * 0.05) / 1000:,.1f} t CO2 evite", delta_color="normal")
+                st.metric(
+                    "kWh economises", f"{fmt_fr(kwh_saved_tot, 0)} kWh",
+                    f"{fmt_fr((kwh_saved_tot * CO2_FACTOR_KG_PER_KWH) / 1000, 1)} t CO2 evite", delta_color="normal",
+                    help=f"Calcule avec un facteur de {CO2_FACTOR_KG_PER_KWH * 1000:.0f} gCO2/kWh ({CO2_FACTOR_SOURCE})"
+                )
 
             st.divider()
             if max_temp_spot > t_max:
@@ -1522,12 +1641,17 @@ with tab_spot:
                 
                 pdf.set_font("Arial", "", 11)
                 pdf.set_text_color(0, 0, 0)
-                pdf.cell(0, 6, f"Facture contrat actuel (HC/HP) : {cost_hchp_tot:,.0f} EUR", ln=1)
-                pdf.cell(0, 6, f"Facture Spot SANS Altileo : {cost_spot_tot:,.0f} EUR", ln=1)
-                pdf.cell(0, 6, f"Facture Spot AVEC Altileo : {(cost_altileo_tot + saas_periode):,.0f} EUR", ln=1)
-                pdf.cell(0, 6, f"Gain Altileo sur Spot : {gain_spot_net:,.0f} EUR (Brut : {gain_spot_brut:,.0f} EUR)", ln=1)
-                pdf.cell(0, 6, f"Gain total vs contrat actuel : {gain_vs_actuel:,.0f} EUR", ln=1)
-                pdf.cell(0, 6, f"Impact carbone : {(kwh_saved_tot * 0.05) / 1000:,.2f} tonnes de CO2 evitees", ln=1)
+                pdf.cell(0, 6, f"Facture contrat actuel (HC/HP) : {fmt_fr(cost_hchp_tot, 0)} EUR", ln=1)
+                pdf.cell(0, 6, f"Facture Spot SANS Altileo : {fmt_fr(cost_spot_tot, 0)} EUR", ln=1)
+                pdf.cell(0, 6, f"Facture Spot AVEC Altileo : {fmt_fr(c_alt_tot, 0)} EUR", ln=1)
+                if equipe_inverter:
+                    pdf.cell(0, 6, f"Gain usure mecanique (Inverter, estimation) : {fmt_fr(usure_periode, 0)} EUR", ln=1)
+                pdf.cell(0, 6, f"Gain Altileo sur Spot : {fmt_fr(gain_spot_net, 0)} EUR (Brut : {fmt_fr(gain_spot_brut, 0)} EUR)", ln=1)
+                pdf.cell(0, 6, f"Gain total vs contrat actuel : {fmt_fr(gain_vs_actuel, 0)} EUR", ln=1)
+                pdf.cell(0, 6, f"Impact carbone : {fmt_fr((kwh_saved_tot * CO2_FACTOR_KG_PER_KWH) / 1000, 2)} tonnes de CO2 evitees", ln=1)
+                pdf.set_font("Arial", "I", 8)
+                pdf.cell(0, 5, f"(facteur retenu : {CO2_FACTOR_KG_PER_KWH * 1000:.0f} gCO2/kWh -- {CO2_FACTOR_SOURCE})", ln=1)
+                pdf.set_font("Arial", "", 11)
                 pdf.cell(0, 6, f"Validation HACCP : {'ECHEC' if max_temp_spot > t_max else 'CONFORME'} (Temp max: {max_temp_spot:.2f} C)", ln=1)
                 
                 return bytes(pdf.output())
@@ -1608,7 +1732,7 @@ with tab_spot:
             colors_bar = ['#8DA0B3', '#C4652B', '#2D8C5A']
             fig_compare.add_trace(go.Bar(
                 x=scenarios, y=values, marker_color=colors_bar,
-                text=[f"{v:,.0f} EUR" for v in values], textposition='outside',
+                text=[f"{fmt_fr(v, 0)} EUR" for v in values], textposition='outside',
                 hovertemplate='<b>%{x}</b><br>%{y:,.0f} EUR/an<extra></extra>'
             ))
             fig_compare.update_layout(
@@ -1639,20 +1763,20 @@ with tab_spot:
                 c_altileo = row['Spot+Altileo (EUR)']
                 saas_mois = (saas * nb) * (row['Jours'] / 365.0)
                 
-                text_hchp.append(f"{c_base:,.0f} €")
-                hover_hchp.append(f"<b>{row['Mois']}</b><br>HC/HP de base : {c_base:,.0f} EUR<extra></extra>")
+                text_hchp.append(f"{fmt_fr(c_base, 0)} €")
+                hover_hchp.append(f"<b>{row['Mois']}</b><br>HC/HP de base : {fmt_fr(c_base, 0)} EUR<extra></extra>")
                 
                 if c_base > 0:
                     pct_hchp_sim = (c_hchp_sim - c_base) / c_base * 100
                     pct_spot = (c_spot - c_base) / c_base * 100
                     pct_altileo = (c_altileo - c_base) / c_base * 100
-                    text_hchp_sim.append(f"{c_hchp_sim:,.0f} €<br>({pct_hchp_sim:+.1f}%)")
-                    text_spot.append(f"{c_spot:,.0f} €<br>({pct_spot:+.1f}%)")
-                    text_altileo.append(f"{c_altileo:,.0f} €<br>({pct_altileo:+.1f}%)")
+                    text_hchp_sim.append(f"{fmt_fr(c_hchp_sim, 0)} €<br>({pct_hchp_sim:+.1f}%)")
+                    text_spot.append(f"{fmt_fr(c_spot, 0)} €<br>({pct_spot:+.1f}%)")
+                    text_altileo.append(f"{fmt_fr(c_altileo, 0)} €<br>({pct_altileo:+.1f}%)")
                 else:
-                    text_hchp_sim.append(f"{c_hchp_sim:,.0f} €")
-                    text_spot.append(f"{c_spot:,.0f} €")
-                    text_altileo.append(f"{c_altileo:,.0f} €")
+                    text_hchp_sim.append(f"{fmt_fr(c_hchp_sim, 0)} €")
+                    text_spot.append(f"{fmt_fr(c_spot, 0)} €")
+                    text_altileo.append(f"{fmt_fr(c_altileo, 0)} €")
                     pct_hchp_sim = 0
                     pct_spot = 0
                     pct_altileo = 0
@@ -1661,17 +1785,17 @@ with tab_spot:
                 
                 hover_hchp_sim.append(
                     f"<b>{row['Mois']}</b><br>"
-                    f"HC/HP avec Altileo : {c_hchp_sim:,.0f} EUR<br>"
+                    f"HC/HP avec Altileo : {fmt_fr(c_hchp_sim, 0)} EUR<br>"
                     f"Gain vs Base : {pct_hchp_sim:+.1f}%<extra></extra>"
                 )
                 hover_spot.append(
                     f"<b>{row['Mois']}</b><br>"
-                    f"Spot seul : {c_spot:,.0f} EUR<br>"
+                    f"Spot seul : {fmt_fr(c_spot, 0)} EUR<br>"
                     f"Diff vs HC/HP : {pct_spot:+.1f}%<extra></extra>"
                 )
                 hover_altileo.append(
                     f"<b>{row['Mois']}</b><br>"
-                    f"Spot + Altileo : {c_altileo:,.0f} EUR<br>"
+                    f"Spot + Altileo : {fmt_fr(c_altileo, 0)} EUR<br>"
                     f"Gain vs HC/HP : {pct_altileo:+.1f}%<br>"
                     f"Gain vs Spot seul : {pct_vs_spot:+.1f}%<extra></extra>"
                 )
@@ -1789,9 +1913,9 @@ with tab_thermal:
         
         for hh in range(24):
             if hh in shed_hours:
-                current_t += pente_rechauffement
+                current_t = temp_rechauffement(current_t, 1.0, t_ambiante, pente_rechauffement, t_consigne)
             else:
-                current_t = max(t_consigne, current_t + pente_refroidissement)
+                current_t = temp_refroidissement(current_t, 1.0, t_consigne, pente_refroidissement)
             temp_24h.append(current_t)
             
         fig_24h = go.Figure()
@@ -1817,9 +1941,9 @@ with tab_thermal:
         for day in range(7):
             for hh in range(24):
                 if hh in shed_hours:
-                    current_t += pente_rechauffement
+                    current_t = temp_rechauffement(current_t, 1.0, t_ambiante, pente_rechauffement, t_consigne)
                 else:
-                    current_t = max(t_consigne, current_t + pente_refroidissement)
+                    current_t = temp_refroidissement(current_t, 1.0, t_consigne, pente_refroidissement)
                 temp_168h.append(current_t)
                 
         max_168h = max(temp_168h)
