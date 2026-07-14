@@ -101,6 +101,45 @@ except Exception:
     SUPABASE_URL = os.getenv("SUPABASE_URL")
     SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 
+try:
+    APP_PASSWORD = st.secrets["APP_PASSWORD"]
+except Exception:
+    APP_PASSWORD = os.getenv("APP_PASSWORD")
+
+# ============================================================
+# 3b. AUTHENTIFICATION
+# ============================================================
+
+
+def check_password() -> bool:
+    """Gate simple par mot de passe partage. Pas de gate si APP_PASSWORD n'est pas configure."""
+    if not APP_PASSWORD:
+        return True
+    if st.session_state.get("authenticated", False):
+        return True
+
+    st.markdown("""
+    <div class="app-header">
+        <h1>ALTILEO</h1>
+        <p>Acces reserve</p>
+    </div>
+    """, unsafe_allow_html=True)
+
+    with st.form("login_form"):
+        pwd = st.text_input("Mot de passe", type="password")
+        submitted = st.form_submit_button("Se connecter", type="primary")
+    if submitted:
+        if pwd == APP_PASSWORD:
+            st.session_state["authenticated"] = True
+            st.rerun()
+        else:
+            st.error("Mot de passe incorrect.")
+    return False
+
+
+if not check_password():
+    st.stop()
+
 # ============================================================
 # 4. FONCTIONS : AUTO-DETECTION
 # ============================================================

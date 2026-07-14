@@ -1,3 +1,4 @@
+streamlit
 pandas
 supabase
 python-dotenv
@@ -5,3 +6,5 @@ matplotlib
 plotly
 fpdf2
 openpyxl
+requests
+httpx
