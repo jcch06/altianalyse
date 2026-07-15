@@ -27,15 +27,15 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Facteur d'emission moyen du reseau electrique francais (source : ADEME Base
+# Facteur d'émission moyen du reseau électrique français (source : ADEME Base
 # Carbone / RTE, moyenne annuelle ~50 gCO2/kWh). A ajuster si une source plus
-# recente ou specifique au contrat du client est disponible.
+# recente ou spécifique au contrat du client est disponible.
 CO2_FACTOR_KG_PER_KWH = 0.05
 CO2_FACTOR_SOURCE = "ADEME Base Carbone / RTE, moyenne annuelle FR ~50 gCO2/kWh"
 
 
 def fmt_fr(value, decimals: int = 0) -> str:
-    """Formate un nombre en convention francaise (espace = separateur de milliers, virgule = decimale)."""
+    """Formate un nombre en convention française (espace = separateur de milliers, virgule = decimale)."""
     s = f"{value:,.{decimals}f}"
     return s.replace(",", "\x00").replace(".", ",").replace("\x00", " ")
 
@@ -94,7 +94,7 @@ def pdf_add_footer(pdf: FPDF) -> None:
     pdf.ln(2)
     pdf.set_font("Arial", "I", 8)
     pdf.set_text_color(*PDF_MUTED_DARK)
-    pdf.cell(0, 5, f"Altileo -- Rapport genere automatiquement le {date.today().strftime('%d/%m/%Y')}", ln=1, align="C")
+    pdf.cell(0, 5, f"Altileo -- Rapport généré automatiquement le {date.today().strftime('%d/%m/%Y')}", ln=1, align="C")
 
 # ============================================================
 # 2. DESIGN SYSTEM (CSS) -- Charte "Frost & Carbon"
@@ -245,7 +245,7 @@ if not check_password():
 
 @st.cache_data(ttl=300, show_spinner=False)
 def fetch_available_tables() -> list:
-    """Detecte les tables disponibles via le schema PostgREST."""
+    """Détecte les tables disponibles via le schema PostgREST."""
     if not SUPABASE_URL or not SUPABASE_KEY:
         return ["mesures_fady"]
     try:
@@ -276,12 +276,12 @@ def fetch_available_tables() -> list:
 
 @st.cache_data(ttl=120, show_spinner=False)
 def fetch_available_sensors(table_name: str) -> list:
-    """Detecte les capteurs uniques dans une table."""
+    """Détecte les capteurs uniques dans une table."""
     if not SUPABASE_URL or not SUPABASE_KEY:
         return []
     try:
         supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
-        # Echantillonner debut et fin de la table pour couvrir tous les capteurs
+        # Échantillonner début et fin de la table pour couvrir tous les capteurs
         resp1 = supabase.table(table_name).select('capteur')\
             .order('timestamp', desc=False).limit(500).execute()
         resp2 = supabase.table(table_name).select('capteur')\
@@ -296,7 +296,7 @@ def fetch_available_sensors(table_name: str) -> list:
 
 @st.cache_data(ttl=300, show_spinner=False)
 def fetch_table_date_range(table_name: str) -> tuple:
-    """Detecte la premiere et la derniere date disponibles dans la table."""
+    """Détecte la première et la dernière date disponibles dans la table."""
     default_start = date(2025, 11, 1)
     default_end = date(2026, 3, 31)
     if not SUPABASE_URL or not SUPABASE_KEY:
@@ -324,12 +324,12 @@ def fetch_table_date_range(table_name: str) -> tuple:
         return default_start, default_end
 
 # ============================================================
-# 5. FONCTIONS : DONNEES ANALYSE (Logique Metier)
+# 5. FONCTIONS : DONNÉES ANALYSE (Logique Métier)
 # ============================================================
 
 @st.cache_data(show_spinner=False)
 def fetch_supabase_data(start_date: str, end_date: str, table_name: str, sensors: tuple):
-    """Recupere les donnees brutes depuis Supabase avec pagination."""
+    """Récupère les données brutes depuis Supabase avec pagination."""
     if not SUPABASE_URL or not SUPABASE_KEY:
         st.error("Identifiants Supabase introuvables.")
         return pd.DataFrame()
@@ -357,7 +357,7 @@ def fetch_supabase_data(start_date: str, end_date: str, table_name: str, sensors
 
 @st.cache_data(show_spinner=False)
 def process_data(df: pd.DataFrame, sensor_comp: str, sensor_cvc: str, tarifs: dict) -> pd.DataFrame:
-    """Calcule puissance, energie, couts par categorie et plage tarifaire."""
+    """Calcule puissance, énergie, coûts par catégorie et plage tarifaire."""
     if df.empty:
         return df
 
@@ -371,7 +371,7 @@ def process_data(df: pd.DataFrame, sensor_comp: str, sensor_cvc: str, tarifs: di
         if df_sensor.empty:
             continue
 
-        # Gestion des gaps (clipping a 30 min max)
+        # Gestion des gaps (clipping à 30 min max)
         df_sensor['delta_hours'] = df_sensor['timestamp'].diff().dt.total_seconds() / 3600.0
         df_sensor['delta_hours'] = df_sensor['delta_hours'].fillna(0).clip(upper=30.0 / 60.0)
 
@@ -383,7 +383,7 @@ def process_data(df: pd.DataFrame, sensor_comp: str, sensor_cvc: str, tarifs: di
             df_sensor['categorie_conso'] = 'hvac'
             df_sensor.loc[df_sensor['valeur'] > 6.0, 'categorie_conso'] = 'resistance'
 
-        # Integration trapezoidale
+        # Intégration trapezoidale
         df_sensor['puissance_moyenne'] = (
             df_sensor['puissance_kw'] + df_sensor['puissance_kw'].shift(1).fillna(df_sensor['puissance_kw'])
         ) / 2.0
@@ -412,7 +412,7 @@ def process_data(df: pd.DataFrame, sensor_comp: str, sensor_cvc: str, tarifs: di
 
 @st.cache_data(show_spinner=False)
 def generate_detailed_dataframes(df: pd.DataFrame):
-    """Genere les bilans journalier et hebdomadaire."""
+    """Génère les bilans journalier et hebdomadaire."""
     if df.empty:
         return pd.DataFrame(), pd.DataFrame()
 
@@ -468,7 +468,7 @@ def generate_detailed_dataframes(df: pd.DataFrame):
 
 
 def calculate_period_summary(df: pd.DataFrame, saison: str, tarifs: dict) -> dict:
-    """Calcule la synthese mensuelle pour une saison (HT)."""
+    """Calcule la synthèse mensuelle pour une saison (HT)."""
     if df.empty:
         return {}
 
@@ -506,7 +506,7 @@ def calculate_period_summary(df: pd.DataFrame, saison: str, tarifs: dict) -> dic
 
 @st.cache_data(ttl=60, show_spinner=False)
 def fetch_monitoring_data(table_name: str, sensors: tuple, start_ts: str, end_ts: str):
-    """Recupere les donnees brutes pour le monitoring (cache court)."""
+    """Récupère les données brutes pour le monitoring (cache court)."""
     if not SUPABASE_URL or not SUPABASE_KEY:
         return pd.DataFrame()
     try:
@@ -536,7 +536,7 @@ def fetch_monitoring_data(table_name: str, sensors: tuple, start_ts: str, end_ts
 
 @st.cache_data(ttl=86400, show_spinner=False)
 def fetch_nordpool_prices(start_date_str: str, end_date_str: str):
-    """Recupere les prix Day-Ahead France depuis l'API Nord Pool.
+    """Récupère les prix Day-Ahead France depuis l'API Nord Pool.
     Retourne un DataFrame avec colonnes : date, hour (0-23), price_eur_mwh.
     Les quart-horaires sont moyennes par heure."""
     records = []
@@ -599,21 +599,21 @@ def load_excel_prices_2025():
 
 
 # ============================================================
-# 6c. FONCTIONS : THERMIQUE (MODELE ASYMPTOTIQUE)
+# 6c. FONCTIONS : THERMIQUE (MODÈLE ASYMPTOTIQUE)
 # ============================================================
-# Les pentes mesurees a Rungis (+0.21 C/h de rechauffement, -0.70 C/h de
-# refroidissement) sont des taux INITIAUX, mesures au voisinage de la
+# Les pentes mesurées à Rungis (+0.21 C/h de réchauffement, -0.70 C/h de
+# refroidissement) sont des taux INITIAUX, mesurés au voisinage de la
 # consigne. Physiquement, une chambre froide se rapproche exponentiellement
-# de son point d'equilibre (loi de refroidissement de Newton) : la derive
-# ralentit a mesure qu'elle s'eloigne de la consigne (rechauffement) ou
-# qu'elle s'en rapproche a nouveau (refroidissement). Le modele lineaire
-# simple restait correct sur la fenetre testee (~4h) mais surestime la
-# derive sur des delestages plus longs (MCP, nuit complete).
+# de son point d'équilibre (loi de refroidissement de Newton) : la dérive
+# ralentit à mesure qu'elle s'éloigne de la consigne (réchauffement) ou
+# qu'elle s'en rapproche à nouveau (refroidissement). Le modèle linéaire
+# simple restait correct sur la fenêtre testée (~4h) mais surestime la
+# dérive sur des délestages plus longs (MCP, nuit complète).
 
 
 def temp_rechauffement(t_start: float, dt_h: float, t_ambiante: float,
                         pente_rechauffement: float, t_consigne: float) -> float:
-    """Rechauffement asymptotique vers la temperature ambiante d'equilibre.
+    """Rechauffement asymptotique vers la température ambiante d'équilibre.
     Conserve le taux initial mesure (pente_rechauffement) au voisinage de la consigne."""
     if t_ambiante <= t_consigne or pente_rechauffement <= 0:
         return t_start + pente_rechauffement * dt_h
@@ -624,7 +624,7 @@ def temp_rechauffement(t_start: float, dt_h: float, t_ambiante: float,
 def temp_refroidissement(t_start: float, dt_h: float, t_consigne: float,
                           pente_refroidissement: float) -> float:
     """Refroidissement asymptotique vers la consigne : la recharge ralentit
-    a mesure que l'ecart avec la consigne se reduit (taux de reference calibre a 1 C d'ecart)."""
+    à mesure que l'écart avec la consigne se réduit (taux de référence calibré à 1 C d'écart)."""
     if t_start <= t_consigne or pente_refroidissement >= 0:
         return t_consigne
     tau = 1.0 / abs(pente_refroidissement)
@@ -643,7 +643,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ============================================================
-# 8. INTERFACE : BARRE LATERALE
+# 8. INTERFACE : BARRE LATÉRALE
 # ============================================================
 
 with st.sidebar:
@@ -662,8 +662,8 @@ with st.sidebar:
 - **ROI** : Retour sur investissement
         """)
 
-    # --- Source de donnees ---
-    st.markdown("### Source de donnees")
+    # --- Source de données ---
+    st.markdown("### Source de données")
     available_tables = fetch_available_tables()
     t_name = st.selectbox(
         "Table",
@@ -680,7 +680,7 @@ with st.sidebar:
         comp_idx = detected_sensors.index("courant_1") if "courant_1" in detected_sensors else 0
         cvc_idx = detected_sensors.index("courant_2") if "courant_2" in detected_sensors else min(1, len(detected_sensors) - 1)
         s_comp = st.selectbox("Capteur froid (compresseur)", detected_sensors, index=comp_idx)
-        s_cvc = st.selectbox("Capteur CVC / resistance", detected_sensors, index=cvc_idx)
+        s_cvc = st.selectbox("Capteur CVC / résistance", detected_sensors, index=cvc_idx)
     else:
         col_c1, col_c2 = st.columns(2)
         with col_c1:
@@ -693,7 +693,7 @@ with st.sidebar:
     min_date, max_date = fetch_table_date_range(t_name)
     col_d1, col_d2 = st.columns(2)
     with col_d1:
-        d_start = st.date_input("Debut", min_date)
+        d_start = st.date_input("Début", min_date)
     with col_d2:
         d_end = st.date_input("Fin", max_date)
 
@@ -703,8 +703,8 @@ with st.sidebar:
             'cos_phi': st.number_input("Cos Phi (Froid)", value=0.92, format="%.2f"),
             'hp_hiv': st.number_input("HP Hiver (EUR/kWh)", value=0.12618, format="%.5f"),
             'hc_hiv': st.number_input("HC Hiver (EUR/kWh)", value=0.09779, format="%.5f"),
-            'hp_ete': st.number_input("HP Ete (EUR/kWh)", value=0.07869, format="%.5f"),
-            'hc_ete': st.number_input("HC Ete (EUR/kWh)", value=0.07424, format="%.5f"),
+            'hp_ete': st.number_input("HP Été (EUR/kWh)", value=0.07869, format="%.5f"),
+            'hc_ete': st.number_input("HC Été (EUR/kWh)", value=0.07424, format="%.5f"),
             'turpe': st.number_input("TURPE (EUR/kWh)", value=0.04000, format="%.5f"),
             'taxes': st.number_input("Taxes CSPE (EUR/kWh)", value=0.02100, format="%.5f"),
         }
@@ -727,7 +727,7 @@ with st.sidebar:
 
     st.divider()
 
-    # --- Modelisation ---
+    # --- Modélisation ---
     st.markdown("### Modélisation Altileo")
     h = st.slider("Délestage HP (heures)", 0.0, 16.0, 5.0, 0.5)
     r = st.slider("Rattrapage HC (%)", 0, 100, 10, 1) / 100.0
@@ -786,13 +786,13 @@ with st.sidebar:
 
 analysis_run = st.session_state.get('run_analysis', False)
 
-# Variables d'analyse (initialisees a None)
+# Variables d'analyse (initialisées à None)
 df_proc = None
 f_ref_an = k_ref_an = gain_an_net = gain_an_brut = 0
 k_sauves_an = pct = roi = i_net = 0
 s_h = s_e = None
 
-# Variables Spot (initialisees a None ou valeurs par defaut)
+# Variables Spot (initialisées à None ou valeurs par défaut)
 spot_df = pd.DataFrame()
 res_df = pd.DataFrame()
 fig_evo = None
@@ -813,7 +813,7 @@ if analysis_run:
         df_raw = fetch_supabase_data(str(d_start), str(d_end), t_name, tuple([s_comp, s_cvc]))
 
         if df_raw.empty:
-            st.warning("Aucune donnée trouvée pour cette periode et cette table.")
+            st.warning("Aucune donnée trouvée pour cette période et cette table.")
             analysis_run = False
         else:
             df_proc = process_data(df_raw, s_comp, s_cvc, tarifs)
@@ -828,7 +828,7 @@ if analysis_run:
             s_h = sum_h if sum_h else sum_e
             s_e = sum_e if sum_e else sum_h
 
-            # --- Generation des profils mensuels ---
+            # --- Génération des profils mensuels ---
             df_spot_calc = df_proc.copy()
             df_spot_calc['heure'] = df_spot_calc['timestamp'].dt.hour
             df_spot_calc['mois'] = df_spot_calc['timestamp'].dt.month
@@ -851,7 +851,7 @@ if analysis_run:
 
             # --- Simulation Classique HC/HP sur 12 mois ---
             jours_par_mois = {1: 31, 2: 28, 3: 31, 4: 30, 5: 31, 6: 30, 7: 31, 8: 31, 9: 30, 10: 31, 11: 30, 12: 31}
-            noms_mois = {1: "Janvier", 2: "Fevrier", 3: "Mars", 4: "Avril", 5: "Mai", 6: "Juin", 7: "Juillet", 8: "Aout", 9: "Septembre", 10: "Octobre", 11: "Novembre", 12: "Decembre"}
+            noms_mois = {1: "Janvier", 2: "Février", 3: "Mars", 4: "Avril", 5: "Mai", 6: "Juin", 7: "Juillet", 8: "Août", 9: "Septembre", 10: "Octobre", 11: "Novembre", 12: "Décembre"}
             
             hchp_monthly_results = []
             f_ref_tot = 0.0
@@ -868,7 +868,7 @@ if analysis_run:
                 saison = 'hiver' if m in [11, 12, 1, 2, 3] else 'ete'
                 prof = monthly_profiles.get(m, global_all_hourly)
                 
-                # Separation HP/HC de base (HP de 6h a 22h)
+                # Séparation HP/HC de base (HP de 6h à 22h)
                 kwh_hp_jour = sum(prof[hh] for hh in range(6, 22))
                 kwh_hc_jour = sum(prof[hh] for hh in range(24) if hh < 6 or hh >= 22)
                 
@@ -884,7 +884,7 @@ if analysis_run:
                 taxes_base = (k_hp_mois + k_hc_mois) * tarifs['taxes']
                 total_ht_base = f_hp_base + f_hc_base + turpe_base + taxes_base
                 
-                # Calcul precis de l'effacement base sur le profil horaire reel (limite a la plage hors travail 12h-22h)
+                # Calcul précis de l'effacement basé sur le profil horaire réel (limité à la plage hors travail 12h-22h)
                 hp_sorted_consos = sorted([prof[hh] for hh in range(12, 22)], reverse=True)
                 h_int = int(h)
                 h_frac = h - h_int
@@ -940,11 +940,11 @@ if analysis_run:
             gain_an_net = gain_tot_net * (365.0 / jours_totaux) if jours_totaux > 0 else 0.0
             k_sauves_an = k_sauves_tot * (365.0 / jours_totaux) if jours_totaux > 0 else 0.0
 
-            # Calcul thermique theorique (rechauffement asymptotique sur h heures continues)
+            # Calcul thermique théorique (rechauffement asymptotique sur h heures continues)
             temp_max_hchp = temp_rechauffement(t_consigne, h, t_ambiante, pente_rechauffement, t_consigne)
             derive_max_hchp = temp_max_hchp - t_consigne
 
-            # --- Generation des graphiques (en memoire) ---
+            # --- Génération des graphiques (en mémoire) ---
             CHART_COLORS = ['#111111', '#00A4B4', '#555555', '#0E7C8C']
             CHART_LABELS = ['HC', 'HP', 'TURPE', 'Taxes']
 
@@ -991,7 +991,7 @@ if analysis_run:
                 ax.set_title(f"Saison {title} (HT)", pad=20, fontweight="bold", fontsize=11, color='#555555')
                 ax.set_ylabel("Euros / mois", fontsize=9, color='#555555')
 
-                # Ajuster l'axe Y pour eviter que l'annotation soit coupee
+                # Ajuster l'axe Y pour éviter que l'annotation soit coupée
                 ax.set_ylim(0, max(c_av, c_ap) * 1.25)
 
                 # Annotation gain
@@ -1005,7 +1005,7 @@ if analysis_run:
                         bbox=dict(boxstyle="round,pad=0.3", fc="#111111", ec="#00A4B4", lw=1)
                     )
 
-                # Legende
+                # Légende
                 legend_handles = [Patch(facecolor=c, label=l) for c, l in zip(CHART_COLORS, CHART_LABELS)]
                 ax.legend(
                     handles=legend_handles, loc='upper right', fontsize=8,
@@ -1022,7 +1022,7 @@ if analysis_run:
                 return fig
 
             fig_h = draw_chart(s_h, "HIVER")
-            fig_e = draw_chart(s_e, "ETE")
+            fig_e = draw_chart(s_e, "ÉTÉ")
 
 # ============================================================
 # 10. ONGLETS
@@ -1046,10 +1046,11 @@ with tab_dashboard:
         st.info("Configurez les paramètres dans le panneau latéral puis lancez l'analyse.")
     else:
         nb_mois = len(mois_dispos)
-        st.markdown(f'<p class="section-title">Détail Mensuel ({nb_mois} mois etudies)</p>', unsafe_allow_html=True)
+        st.markdown(f'<p class="section-title">Détail Mensuel ({nb_mois} mois étudiés)</p>', unsafe_allow_html=True)
         
         for res in hchp_monthly_results:
-            st.markdown(f"**Bilan {res['mois_nom']} ({res['jours']} jours - Tarif {res['saison'].capitalize()})**")
+            saison_label = {'ete': 'Été', 'hiver': 'Hiver'}.get(res['saison'], res['saison'].capitalize())
+            st.markdown(f"**Bilan {res['mois_nom']} ({res['jours']} jours - Tarif {saison_label})**")
             c1, c2, c3, c4 = st.columns(4)
             c_base = res['cout_base']
             c_sim = res['cout_sim']
@@ -1103,8 +1104,8 @@ with tab_dashboard:
             st.metric(
                 label="Impact environnemental",
                 value=f"{fmt_fr((k_sauves_tot * CO2_FACTOR_KG_PER_KWH) / 1000, 1)} t",
-                delta="CO2 evite",
-                help=f"Calcule avec un facteur de {CO2_FACTOR_KG_PER_KWH * 1000:.0f} gCO2/kWh ({CO2_FACTOR_SOURCE})"
+                delta="CO2 évité",
+                help=f"Calculé avec un facteur de {CO2_FACTOR_KG_PER_KWH * 1000:.0f} gCO2/kWh ({CO2_FACTOR_SOURCE})"
             )
         with col5:
             st.metric(
@@ -1115,14 +1116,14 @@ with tab_dashboard:
             )
 
         st.divider()
-        st.markdown('<p class="section-title">Parametres de modelisation retenus</p>', unsafe_allow_html=True)
+        st.markdown('<p class="section-title">Paramètres de modélisation retenus</p>', unsafe_allow_html=True)
 
         param_col1, param_col2 = st.columns(2)
         with param_col1:
-            st.markdown(f"**Chambres equipees :** {nb}")
-            st.markdown(f"**Delestage journalier :** {h} heures")
+            st.markdown(f"**Chambres équipées :** {nb}")
+            st.markdown(f"**Délestage journalier :** {h} heures")
         with param_col2:
-            st.markdown(f"**Rattrapage thermique :** {r * 100:.0f} % (marge securite {sec * 100:.0f} %)")
+            st.markdown(f"**Rattrapage thermique :** {r * 100:.0f} % (marge sécurité {sec * 100:.0f} %)")
             st.markdown(f"**Abonnement SaaS :** {saas * nb:.0f} EUR / an")
             if equipe_inverter:
                 st.markdown(f"**Gain usure mécanique (Inverter, estimation) :** {gain_usure_an * nb:.0f} EUR / an")
@@ -1130,9 +1131,9 @@ with tab_dashboard:
         st.divider()
         st.markdown('<p class="section-title">Validation Thermique HACCP</p>', unsafe_allow_html=True)
         if temp_max_hchp > t_max:
-            st.error(f"**RISQUE SANITAIRE** : La temperature maximale simulee atteint **{temp_max_hchp:.2f} C**, depassant la limite HACCP de **{t_max:.2f} C**.")
+            st.error(f"**RISQUE SANITAIRE** : La température maximale simulée atteint **{temp_max_hchp:.2f} C**, dépassant la limite HACCP de **{t_max:.2f} C**.")
         else:
-            st.success(f"**CONFORME** : La temperature maximale simulee est de **{temp_max_hchp:.2f} C** (limite: {t_max:.2f} C).")
+            st.success(f"**CONFORME** : La température maximale simulée est de **{temp_max_hchp:.2f} C** (limite : {t_max:.2f} C).")
 
         st.divider()
         
@@ -1140,31 +1141,31 @@ with tab_dashboard:
         def create_pdf():
             pdf = FPDF()
             pdf.add_page()
-            pdf_add_header(pdf, "Rapport d'Audit Energetique")
+            pdf_add_header(pdf, "Rapport d'Audit Énergétique")
 
             pdf.cell(0, 6, f"Date de l'audit : {date.today().strftime('%d/%m/%Y')}", ln=1)
             try:
-                pdf.cell(0, 6, f"Periode analysee : du {d_start.strftime('%d/%m/%Y')} au {d_end.strftime('%d/%m/%Y')}", ln=1)
+                pdf.cell(0, 6, f"Période analysée : du {d_start.strftime('%d/%m/%Y')} au {d_end.strftime('%d/%m/%Y')}", ln=1)
             except:
-                pdf.cell(0, 6, f"Periode analysee : du {d_start} au {d_end}", ln=1)
-            pdf.cell(0, 6, f"Nombre de chambres equipees : {nb}", ln=1)
-            pdf.cell(0, 6, f"Delestage programme : {h} heures/jour", ln=1)
+                pdf.cell(0, 6, f"Période analysée : du {d_start} au {d_end}", ln=1)
+            pdf.cell(0, 6, f"Nombre de chambres équipées : {nb}", ln=1)
+            pdf.cell(0, 6, f"Délestage programmé : {h} heures/jour", ln=1)
 
-            pdf_add_section_title(pdf, "Resultats Financiers (HT)")
+            pdf_add_section_title(pdf, "Résultats Financiers (HT)")
             pdf.cell(0, 6, f"Facture de référence : {fmt_fr(f_ref_an, 0)} EUR/an", ln=1)
             pdf.cell(0, 6, f"Gain d'exploitation brut : {fmt_fr(gain_an_brut, 0)} EUR/an", ln=1)
             pdf.cell(0, 6, f"Abonnement SaaS : {fmt_fr(saas * nb, 0)} EUR/an", ln=1)
             if equipe_inverter:
-                pdf.cell(0, 6, f"Gain usure mecanique (Inverter, estimation) : {fmt_fr(gain_usure_an * nb, 0)} EUR/an", ln=1)
+                pdf.cell(0, 6, f"Gain usure mécanique (Inverter, estimation) : {fmt_fr(gain_usure_an * nb, 0)} EUR/an", ln=1)
             pdf.cell(0, 6, f"Gain d'exploitation NET : {fmt_fr(gain_an_net, 0)} EUR/an", ln=1)
             pdf.cell(0, 6, f"Retour sur investissement (ROI) : {roi:.1f} mois (soit {roi/12:.1f} ans)", ln=1)
-            pdf.cell(0, 6, f"Impact carbone : {fmt_fr((k_sauves_an * CO2_FACTOR_KG_PER_KWH) / 1000, 1)} tonnes de CO2 evitees/an", ln=1)
+            pdf.cell(0, 6, f"Impact carbone : {fmt_fr((k_sauves_an * CO2_FACTOR_KG_PER_KWH) / 1000, 1)} tonnes de CO2 évitées/an", ln=1)
             pdf.set_font("Arial", "I", 8)
             pdf.cell(0, 5, f"(facteur retenu : {CO2_FACTOR_KG_PER_KWH * 1000:.0f} gCO2/kWh -- {CO2_FACTOR_SOURCE})", ln=1)
             pdf.set_font("Arial", "", 11)
-            pdf.cell(0, 6, f"Validation HACCP : {'ECHEC' if temp_max_hchp > t_max else 'CONFORME'} (Temp max: {temp_max_hchp:.2f} C)", ln=1)
+            pdf.cell(0, 6, f"Validation HACCP : {'ÉCHEC' if temp_max_hchp > t_max else 'CONFORME'} (Temp max : {temp_max_hchp:.2f} C)", ln=1)
 
-            pdf_add_section_title(pdf, "Modelisation Mensuelle")
+            pdf_add_section_title(pdf, "Modélisation Mensuelle")
 
             img_h = io.BytesIO()
             fig_h.savefig(img_h, format='png', bbox_inches='tight')
@@ -1179,7 +1180,7 @@ with tab_dashboard:
             
         pdf_bytes = create_pdf()
         st.download_button(
-            label="Telecharger le rapport PDF",
+            label="Télécharger le rapport PDF",
             data=pdf_bytes,
             file_name=f"Altileo_Audit_{date.today().strftime('%Y%m%d')}.pdf",
             mime="application/pdf",
@@ -1187,11 +1188,11 @@ with tab_dashboard:
         )
 
 # ----------------------------------------------------------
-# ONGLET 2 : AUDIT DETAILLE
+# ONGLET 2 : AUDIT DÉTAILLÉ
 # ----------------------------------------------------------
 with tab_details:
     if not analysis_run or df_proc is None:
-        st.info("Lancez l'analyse pour consulter le detail des consommations.")
+        st.info("Lancez l'analyse pour consulter le détail des consommations.")
     else:
         df_daily, df_weekly = generate_detailed_dataframes(df_proc)
 
@@ -1202,11 +1203,11 @@ with tab_details:
         st.dataframe(df_daily, use_container_width=True, hide_index=True)
 
 # ----------------------------------------------------------
-# ONGLET 3 : MODELISATION GRAPHIQUE
+# ONGLET 3 : MODÉLISATION GRAPHIQUE
 # ----------------------------------------------------------
 with tab_charts:
     if not analysis_run or s_h is None:
-        st.info("Lancez l'analyse pour afficher les graphiques de modelisation.")
+        st.info("Lancez l'analyse pour afficher les graphiques de modélisation.")
     else:
         st.markdown('<p class="section-title">Comparaison mensuelle : Actuel vs Altileo (HT)</p>', unsafe_allow_html=True)
 
@@ -1222,14 +1223,14 @@ with tab_charts:
 with tab_monitoring:
     st.markdown('<p class="section-title">Monitoring des capteurs</p>', unsafe_allow_html=True)
 
-    # --- Controles ---
+    # --- Contrôles ---
     mon_col1, mon_col2, mon_col3 = st.columns([3, 2, 1])
 
     with mon_col1:
         all_sensors = fetch_available_sensors(t_name)
         default_sensors = all_sensors[:2] if len(all_sensors) >= 2 else all_sensors
         mon_sensors = st.multiselect(
-            "Capteurs a afficher",
+            "Capteurs à afficher",
             all_sensors,
             default=default_sensors,
             key="mon_sensors"
@@ -1237,22 +1238,22 @@ with tab_monitoring:
 
     with mon_col2:
         period_options = [
-            "Derniere heure",
-            "6 dernieres heures",
-            "24 dernieres heures",
-            "48 dernieres heures",
+            "Dernière heure",
+            "6 dernières heures",
+            "24 dernières heures",
+            "48 dernières heures",
             "7 derniers jours",
             "30 derniers jours",
-            "Personnalisee"
+            "Personnalisée"
         ]
-        period_choice = st.selectbox("Periode", period_options, index=2, key="mon_period")
+        period_choice = st.selectbox("Période", period_options, index=2, key="mon_period")
 
     with mon_col3:
         st.markdown("<div style='height: 1.6rem'></div>", unsafe_allow_html=True)
         refresh_clicked = st.button("Actualiser", key="mon_refresh", type="secondary")
 
-    # Periode personnalisee
-    if period_choice == "Personnalisee":
+    # Période personnalisée
+    if period_choice == "Personnalisée":
         mon_date_col1, mon_date_col2 = st.columns(2)
         with mon_date_col1:
             mon_start_date = st.date_input("Du", date.today() - timedelta(days=7), key="mon_start")
@@ -1262,39 +1263,39 @@ with tab_monitoring:
         mon_end_ts = f"{mon_end_date}T23:59:59"
     else:
         period_deltas = {
-            "Derniere heure": timedelta(hours=1),
-            "6 dernieres heures": timedelta(hours=6),
-            "24 dernieres heures": timedelta(hours=24),
-            "48 dernieres heures": timedelta(hours=48),
+            "Dernière heure": timedelta(hours=1),
+            "6 dernières heures": timedelta(hours=6),
+            "24 dernières heures": timedelta(hours=24),
+            "48 dernières heures": timedelta(hours=48),
             "7 derniers jours": timedelta(days=7),
             "30 derniers jours": timedelta(days=30),
         }
         delta = period_deltas[period_choice]
-        # Arrondir a la minute pour stabiliser le cache
+        # Arrondir à la minute pour stabiliser le cache
         now_rounded = datetime.now().replace(second=0, microsecond=0)
         mon_start_ts = (now_rounded - delta).strftime('%Y-%m-%dT%H:%M:%S')
         mon_end_ts = now_rounded.strftime('%Y-%m-%dT%H:%M:%S')
 
-    # Forcer le rafraichissement
+    # Forcer le rafraîchissement
     if refresh_clicked:
         fetch_monitoring_data.clear()
         st.rerun()
 
-    # --- Affichage des donnees ---
+    # --- Affichage des données ---
     if not mon_sensors:
-        st.info("Selectionnez au moins un capteur pour afficher les donnees.")
+        st.info("Sélectionnez au moins un capteur pour afficher les données.")
     else:
         df_mon = fetch_monitoring_data(t_name, tuple(mon_sensors), mon_start_ts, mon_end_ts)
 
         if df_mon.empty:
-            st.info("Aucune donnee disponible pour la periode et les capteurs selectionnes.")
+            st.info("Aucune donnée disponible pour la période et les capteurs sélectionnés.")
         else:
             df_mon['timestamp'] = pd.to_datetime(df_mon['timestamp'])
             df_mon['valeur'] = pd.to_numeric(df_mon['valeur'], errors='coerce')
             df_mon = df_mon.sort_values('timestamp')
 
             # --- Graphique Plotly ---
-            # Palette technique derivee des deux teintes de marque (teal, carbon),
+            # Palette technique dérivée des deux teintes de marque (teal, carbon),
             # par variations de nuance -- suffisamment de contraste pour plusieurs capteurs
             # sans sortir de la famille de couleurs Frost & Carbon.
             PLOTLY_COLORS = [
@@ -1367,17 +1368,17 @@ with tab_monitoring:
                     st.markdown(f"**{sensor}**")
                     last_val = df_s['valeur'].iloc[-1]
                     unit = " A" if "courant" in sensor.lower() else " °C" if "temp" in sensor.lower() else ""
-                    st.metric("Derniere valeur", f"{last_val:.2f}{unit}")
+                    st.metric("Dernière valeur", f"{last_val:.2f}{unit}")
                     sc1, sc2, sc3 = st.columns(3)
                     sc1.metric("Min", f"{df_s['valeur'].min():.2f}{unit}")
                     sc2.metric("Moy", f"{df_s['valeur'].mean():.2f}{unit}")
                     sc3.metric("Max", f"{df_s['valeur'].max():.2f}{unit}")
 
             # Horodatage
-            st.caption(f"Derniere actualisation : {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}")
+            st.caption(f"Dernière actualisation : {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}")
 
 # ----------------------------------------------------------
-# ONGLET 5 : SIMULATION SPOT (DONNEES NORD POOL)
+# ONGLET 5 : SIMULATION SPOT (DONNÉES NORD POOL)
 # ----------------------------------------------------------
 with tab_spot:
     st.markdown('<p class="section-title">Simulation contrat Spot -- Données Nord Pool France</p>', unsafe_allow_html=True)
@@ -1401,7 +1402,7 @@ with tab_spot:
             with st.spinner(f"Chargement des prix Spot Nord Pool ({spot_days} jours)..."):
                 spot_df = fetch_nordpool_prices(spot_start_date.isoformat(), spot_end_date.isoformat())
             if spot_df.empty:
-                st.error("Impossible de charger les données Nord Pool. Verifiez votre connexion.")
+                st.error("Impossible de charger les données Nord Pool. Vérifiez votre connexion.")
 
         if not spot_df.empty:
             n_days_loaded = spot_df['date'].nunique()
@@ -1412,10 +1413,10 @@ with tab_spot:
             else:
                 st.success(f"{n_days_loaded} jours chargés ({spot_start_date.strftime('%d/%m/%Y')} au {spot_end_date.strftime('%d/%m/%Y')}) -- Prix moyen : **{spot_avg_overall:.1f} EUR/MWh**")
 
-            # --- Profil horaire moyen (depuis les vraies donnees) ---
+            # --- Profil horaire moyen (depuis les vraies données) ---
             avg_profile = spot_df.groupby('hour')['price_eur_mwh'].mean().reindex(range(24), fill_value=0)
 
-            # Identifier les heures les plus cheres en moyenne pour le graphique (hors 2h-12h)
+            # Identifier les heures les plus chères en moyenne pour le graphique (hors 2h-12h)
             valid_hours = [h for h in range(24) if not (2 <= h < 12)]
             top_hours_avg = avg_profile.loc[valid_hours].nlargest(spot_delest_h).index.tolist()
 
@@ -1454,8 +1455,8 @@ with tab_spot:
                     current_month = 1
                 current_all_hourly = monthly_profiles.get(current_month, global_all_hourly)
 
-                # Recherche gloutonne des N heures les plus rentables a delester
-                # en prenant en compte le profil de consommation et le cout du rattrapage
+                # Recherche gloutonne des N heures les plus rentables à délester
+                # en prenant en compte le profil de consommation et le coût du rattrapage
                 delest_hours_day = []
                 for _ in range(spot_delest_h):
                     best_h = -1
@@ -1517,7 +1518,7 @@ with tab_spot:
                     if current_temp > max_temp_day:
                         max_temp_day = current_temp
 
-                # Reference HC/HP sans delestage pour la meme journee
+                # Référence HC/HP sans délestage pour la même journée
                 dt_obj = pd.to_datetime(date_val)
                 month_val = dt_obj.month
                 saison_val = 'hiver' if month_val in [11, 12, 1, 2, 3] else 'ete'
@@ -1531,7 +1532,7 @@ with tab_spot:
                     p_kwh = t_base + tarifs['turpe'] + tarifs['taxes']
                     cost_hchp_day += current_all_hourly[hh] * p_kwh
 
-                # HC/HP AVEC delestage pour la meme journee
+                # HC/HP AVEC délestage pour la même journée
                 hp_consos = [current_all_hourly[hh] for hh in range(6, 22)]
                 hp_sorted = sorted(hp_consos, reverse=True)
                 h_int = int(h)
@@ -1597,7 +1598,7 @@ with tab_spot:
             for col in ['cout_hchp', 'cout_spot', 'cout_altileo', 'kwh_eco', 'gain']:
                 monthly[col] = monthly[col] * nb
                 
-            # Totaux de la periode
+            # Totaux de la période
             total_days = res_df['date'].nunique()
             cost_hchp_tot = res_df['cost_hchp'].sum() * nb
             cost_spot_tot = res_df['cost_spot'].sum() * nb
@@ -1605,7 +1606,7 @@ with tab_spot:
             kwh_saved_tot = res_df['kwh_saved'].sum() * nb
             gain_spot_brut = cost_spot_tot - cost_altileo_tot
             
-            # Prorata SaaS et gain usure mecanique sur la periode analysee
+            # Prorata SaaS et gain usure mécanique sur la période analysée
             saas_periode = (saas * nb) * (total_days / 365.0)
             usure_periode = (gain_usure_an * nb) * (total_days / 365.0)
             gain_spot_net = gain_spot_brut - saas_periode + usure_periode
@@ -1618,7 +1619,7 @@ with tab_spot:
             cost_altileo_annual = cost_altileo_tot * (365.0 / total_days) if total_days > 0 else 0.0
 
             st.divider()
-            st.markdown(f'<p class="section-title">Analyse Mensuelle (Donnees reelles sur {total_days} jours)</p>', unsafe_allow_html=True)
+            st.markdown(f'<p class="section-title">Analyse Mensuelle (Données réelles sur {total_days} jours)</p>', unsafe_allow_html=True)
             
             # Affichage d'une carte par mois
             for _, row in monthly.iterrows():
@@ -1649,7 +1650,7 @@ with tab_spot:
                 st.write("") # spacing
 
             st.divider()
-            st.markdown(f'<p class="section-title">Resume de la periode ({spot_start_date.strftime("%d/%m/%Y")} au {spot_end_date.strftime("%d/%m/%Y")})</p>', unsafe_allow_html=True)
+            st.markdown(f'<p class="section-title">Résumé de la période ({spot_start_date.strftime("%d/%m/%Y")} au {spot_end_date.strftime("%d/%m/%Y")})</p>', unsafe_allow_html=True)
 
             if total_days < 30:
                 st.warning(
@@ -1676,16 +1677,16 @@ with tab_spot:
                 st.metric("Gain vs Actuel", f"{fmt_fr(gain_vs_actuel, 0)} EUR", "Spot+Altileo vs HC/HP", delta_color="normal")
             with kpi5:
                 st.metric(
-                    "kWh economises", f"{fmt_fr(kwh_saved_tot, 0)} kWh",
-                    f"{fmt_fr((kwh_saved_tot * CO2_FACTOR_KG_PER_KWH) / 1000, 1)} t CO2 evite", delta_color="normal",
-                    help=f"Calcule avec un facteur de {CO2_FACTOR_KG_PER_KWH * 1000:.0f} gCO2/kWh ({CO2_FACTOR_SOURCE})"
+                    "kWh économisés", f"{fmt_fr(kwh_saved_tot, 0)} kWh",
+                    f"{fmt_fr((kwh_saved_tot * CO2_FACTOR_KG_PER_KWH) / 1000, 1)} t CO2 évité", delta_color="normal",
+                    help=f"Calculé avec un facteur de {CO2_FACTOR_KG_PER_KWH * 1000:.0f} gCO2/kWh ({CO2_FACTOR_SOURCE})"
                 )
 
             st.divider()
             if max_temp_spot > t_max:
-                st.error(f"**RISQUE SANITAIRE** : Sur la periode, la temperature maximale simulee a atteint **{max_temp_spot:.2f} C**, depassant la limite HACCP de **{t_max:.2f} C**.")
+                st.error(f"**RISQUE SANITAIRE** : Sur la période, la température maximale simulée a atteint **{max_temp_spot:.2f} C**, dépassant la limite HACCP de **{t_max:.2f} C**.")
             else:
-                st.success(f"**CONFORME** : La temperature maximale simulee sur la periode est restee a **{max_temp_spot:.2f} C** (limite: {t_max:.2f} C).")
+                st.success(f"**CONFORME** : La température maximale simulée sur la période est restée à **{max_temp_spot:.2f} C** (limite : {t_max:.2f} C).")
 
             # --- Export PDF Spot ---
             def create_spot_pdf():
@@ -1694,25 +1695,25 @@ with tab_spot:
                 pdf_add_header(pdf, "Rapport d'Audit (Simulation Spot)")
 
                 pdf.cell(0, 6, f"Date de l'audit : {date.today().strftime('%d/%m/%Y')}", ln=1)
-                pdf.cell(0, 6, f"Nombre de chambres equipees : {nb}", ln=1)
-                pdf.cell(0, 6, f"Delestage programme (Spot) : {spot_delest_h} heures/jour", ln=1)
+                pdf.cell(0, 6, f"Nombre de chambres équipées : {nb}", ln=1)
+                pdf.cell(0, 6, f"Délestage programmé (Spot) : {spot_delest_h} heures/jour", ln=1)
                 pdf.cell(0, 6, f"Marge fixe Spot : {spot_margin} EUR/MWh", ln=1)
                 pdf.cell(0, 6, f"Marge proportionnelle Spot (Sobry) : {spot_margin_pct} %", ln=1)
-                pdf.cell(0, 6, f"Periode etudiee : {total_days} jours (Moyenne : {spot_avg_overall:.1f} EUR/MWh)", ln=1)
+                pdf.cell(0, 6, f"Période étudiée : {total_days} jours (Moyenne : {spot_avg_overall:.1f} EUR/MWh)", ln=1)
 
-                pdf_add_section_title(pdf, f"Resultats Financiers sur la periode de {total_days} jours (HT)")
+                pdf_add_section_title(pdf, f"Résultats Financiers sur la période de {total_days} jours (HT)")
                 pdf.cell(0, 6, f"Facture contrat actuel (HC/HP) : {fmt_fr(cost_hchp_tot, 0)} EUR", ln=1)
                 pdf.cell(0, 6, f"Facture Spot SANS Altileo : {fmt_fr(cost_spot_tot, 0)} EUR", ln=1)
                 pdf.cell(0, 6, f"Facture Spot AVEC Altileo : {fmt_fr(c_alt_tot, 0)} EUR", ln=1)
                 if equipe_inverter:
-                    pdf.cell(0, 6, f"Gain usure mecanique (Inverter, estimation) : {fmt_fr(usure_periode, 0)} EUR", ln=1)
+                    pdf.cell(0, 6, f"Gain usure mécanique (Inverter, estimation) : {fmt_fr(usure_periode, 0)} EUR", ln=1)
                 pdf.cell(0, 6, f"Gain Altileo sur Spot : {fmt_fr(gain_spot_net, 0)} EUR (Brut : {fmt_fr(gain_spot_brut, 0)} EUR)", ln=1)
                 pdf.cell(0, 6, f"Gain total vs contrat actuel : {fmt_fr(gain_vs_actuel, 0)} EUR", ln=1)
-                pdf.cell(0, 6, f"Impact carbone : {fmt_fr((kwh_saved_tot * CO2_FACTOR_KG_PER_KWH) / 1000, 2)} tonnes de CO2 evitees", ln=1)
+                pdf.cell(0, 6, f"Impact carbone : {fmt_fr((kwh_saved_tot * CO2_FACTOR_KG_PER_KWH) / 1000, 2)} tonnes de CO2 évitées", ln=1)
                 pdf.set_font("Arial", "I", 8)
                 pdf.cell(0, 5, f"(facteur retenu : {CO2_FACTOR_KG_PER_KWH * 1000:.0f} gCO2/kWh -- {CO2_FACTOR_SOURCE})", ln=1)
                 pdf.set_font("Arial", "", 11)
-                pdf.cell(0, 6, f"Validation HACCP : {'ECHEC' if max_temp_spot > t_max else 'CONFORME'} (Temp max: {max_temp_spot:.2f} C)", ln=1)
+                pdf.cell(0, 6, f"Validation HACCP : {'ÉCHEC' if max_temp_spot > t_max else 'CONFORME'} (Temp max : {max_temp_spot:.2f} C)", ln=1)
 
                 pdf_add_footer(pdf)
                 return bytes(pdf.output())
@@ -1720,7 +1721,7 @@ with tab_spot:
             st.divider()
             spot_pdf_bytes = create_spot_pdf()
             st.download_button(
-                label="Telecharger le rapport PDF Spot",
+                label="Télécharger le rapport PDF Spot",
                 data=spot_pdf_bytes,
                 file_name=f"Altileo_Audit_Spot_{date.today().strftime('%Y%m%d')}.pdf",
                 mime="application/pdf",
@@ -1729,7 +1730,7 @@ with tab_spot:
 
             # --- Graphique Barres Mensuel ---
             st.divider()
-            st.markdown('<p class="section-title">Evolution Mensuelle de la Facture</p>', unsafe_allow_html=True)
+            st.markdown('<p class="section-title">Évolution Mensuelle de la Facture</p>', unsafe_allow_html=True)
             monthly_table = monthly.copy()
             monthly_table.columns = ['Mois', 'Jours', 'Prix moy (EUR/MWh)', 'HC/HP de base (EUR)', 'HC/HP avec Altileo (EUR)', 'Spot seul (EUR)', 'Spot+Altileo (EUR)', 'kWh eco.', 'Gain Altileo (EUR)', 'Temp Max (C)']
             for c in ['Prix moy (EUR/MWh)', 'HC/HP de base (EUR)', 'HC/HP avec Altileo (EUR)', 'Spot seul (EUR)', 'Spot+Altileo (EUR)', 'kWh eco.', 'Gain Altileo (EUR)', 'Temp Max (C)']:
@@ -1866,7 +1867,7 @@ with tab_spot:
             fig_monthly_compare.add_trace(go.Bar(
                 x=monthly_table['Mois'],
                 y=monthly_table['HC/HP de base (EUR)'],
-                name='HC/HP de base (sans delestage)',
+                name='HC/HP de base (sans délestage)',
                 marker_color='#999999',
                 text=text_hchp,
                 textposition='outside',
@@ -1888,7 +1889,7 @@ with tab_spot:
             fig_monthly_compare.add_trace(go.Bar(
                 x=monthly_table['Mois'],
                 y=monthly_table['Spot seul (EUR)'],
-                name='Spot seul (sans delestage)',
+                name='Spot seul (sans délestage)',
                 marker_color='#111111',
                 text=text_spot,
                 textposition='outside',
@@ -1912,7 +1913,7 @@ with tab_spot:
                 margin=dict(l=10, r=10, t=30, b=10),
                 plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)',
                 font=dict(family="Inter", size=11, color='#555555'),
-                yaxis=dict(title="Cout mensuel (EUR HT)", showgrid=True, gridcolor='rgba(229,229,229,0.7)'),
+                yaxis=dict(title="Coût mensuel (EUR HT)", showgrid=True, gridcolor='rgba(229,229,229,0.7)'),
                 xaxis=dict(showgrid=False),
                 legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
                 height=450
@@ -1922,7 +1923,7 @@ with tab_spot:
 # ONGLET 6 : GRAPHIQUES (PRIX SPOT)
 # ----------------------------------------------------------
 with tab_spot_charts:
-    st.markdown('<p class="section-title">Visualisation de la simulation Spot (Donnees Nord Pool)</p>', unsafe_allow_html=True)
+    st.markdown('<p class="section-title">Visualisation de la simulation Spot (Données Nord Pool)</p>', unsafe_allow_html=True)
     if not analysis_run:
         st.info("Lancez d'abord l'analyse dans l'onglet Simulation Délestage (Contrat HC/HP).")
     elif spot_df is None or spot_df.empty:
@@ -1932,11 +1933,11 @@ with tab_spot_charts:
         if fig_monthly_compare is not None:
             st.plotly_chart(fig_monthly_compare, use_container_width=True, config={'displaylogo': False, 'modeBarButtonsToRemove': ['lasso2d', 'select2d']})
 
-        st.markdown('<p class="section-title">Comparaison visuelle globale des scenarios (annuel HT)</p>', unsafe_allow_html=True)
+        st.markdown('<p class="section-title">Comparaison visuelle globale des scénarios (annuel HT)</p>', unsafe_allow_html=True)
         if fig_compare is not None:
             st.plotly_chart(fig_compare, use_container_width=True, config={'displaylogo': False, 'modeBarButtonsToRemove': ['lasso2d', 'select2d']})
 
-        st.markdown('<p class="section-title">Evolution du prix Spot moyen journalier</p>', unsafe_allow_html=True)
+        st.markdown('<p class="section-title">Évolution du prix Spot moyen journalier</p>', unsafe_allow_html=True)
         if fig_evo is not None:
             st.plotly_chart(fig_evo, use_container_width=True, config={'displaylogo': False, 'modeBarButtonsToRemove': ['lasso2d', 'select2d']})
 
@@ -1946,27 +1947,27 @@ with tab_spot_charts:
 with tab_thermal:
     st.markdown('<p class="section-title">Validation Thermique HACCP (Simulation Interactive)</p>', unsafe_allow_html=True)
     if not analysis_run:
-        st.info("Lancez d'abord l'analyse dans le panneau lateral.")
+        st.info("Lancez d'abord l'analyse dans le panneau latéral.")
     else:
-        st.markdown("Simulez l'impact du delestage sur la temperature a coeur de la marchandise (ex: carton).")
+        st.markdown("Simulez l'impact du délestage sur la température à cœur de la marchandise (ex : carton).")
         
-        scenario = st.radio("Scenario de delestage a simuler", ["Optimisation Spot (Moyenne)", "Contrat classique (HC/HP)"], horizontal=True)
+        scenario = st.radio("Scénario de délestage à simuler", ["Optimisation Spot (Moyenne)", "Contrat classique (HC/HP)"], horizontal=True)
         
         if scenario == "Optimisation Spot (Moyenne)":
             if spot_df is None or spot_df.empty:
-                st.warning("Veuillez lancer l'analyse avec un historique Spot valide pour voir ce scenario.")
+                st.warning("Veuillez lancer l'analyse avec un historique Spot valide pour voir ce scénario.")
                 shed_hours = []
             else:
                 shed_hours = top_hours_avg
-                st.markdown(f"**Heures coupees (Spot) :** {', '.join([f'{hh}h' for hh in sorted(shed_hours)])}")
+                st.markdown(f"**Heures coupées (Spot) :** {', '.join([f'{hh}h' for hh in sorted(shed_hours)])}")
         else:
             c1, c2 = st.columns(2)
             with c1:
-                start_h = st.number_input("Heure de debut de coupure (HC/HP)", min_value=0, max_value=23, value=18)
+                start_h = st.number_input("Heure de début de coupure (HC/HP)", min_value=0, max_value=23, value=18)
             with c2:
-                st.markdown(f"<br>**Duree de coupure retenue :** {h} heures", unsafe_allow_html=True)
+                st.markdown(f"<br>**Durée de coupure retenue :** {h} heures", unsafe_allow_html=True)
             shed_hours = [(int(start_h) + i) % 24 for i in range(int(h))]
-            st.markdown(f"**Heures coupees (HC/HP) :** {', '.join([f'{hh}h' for hh in sorted(shed_hours)])}")
+            st.markdown(f"**Heures coupées (HC/HP) :** {', '.join([f'{hh}h' for hh in sorted(shed_hours)])}")
 
         # --- Simulation 24h ---
         temp_24h = [t_consigne]
