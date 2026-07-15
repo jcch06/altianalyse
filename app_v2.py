@@ -665,7 +665,10 @@ with st.sidebar:
 if app_mode == "Dashboard Temps Réel (Démo Client)":
     with st.sidebar:
         st.caption("Mode démo -- données illustratives, non connectées à Supabase.")
-    st.iframe(render_client_dashboard_html(), height="content")
+    # Masque le bandeau de titre de l'outil d'audit (deja rendu plus haut) pour eviter
+    # un double branding avec le logo propre au composant du dashboard demo.
+    st.markdown("<style>.app-header{display:none}</style>", unsafe_allow_html=True)
+    st.iframe(render_client_dashboard_html(), height=2000)
     st.stop()
 
 with st.sidebar:
