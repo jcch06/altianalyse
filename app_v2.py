@@ -15,6 +15,8 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from matplotlib.patches import Patch
 
+from client_dashboard_demo import render_client_dashboard_html
+
 # ============================================================
 # 1. CONFIGURATION DE LA PAGE
 # ============================================================
@@ -649,6 +651,24 @@ st.markdown("""
 with st.sidebar:
     st.markdown("## Altileo PRO")
 
+    app_mode = st.radio(
+        "Mode d'affichage",
+        ["Audit Énergétique (Altianalyse)", "Dashboard Temps Réel (Démo Client)"],
+        label_visibility="collapsed",
+    )
+    st.divider()
+
+# Mode démo : prototype haute fidélité du dashboard de supervision client, encapsulé
+# dans un composant HTML/CSS/JS autonome (Tailwind, Chart.js, Lucide). Données statiques
+# et illustratives -- non connecté à Supabase. Le reste de l'outil d'audit (ci-dessous)
+# n'est ni execute ni modifie dans ce mode : st.stop() interrompt le script ici.
+if app_mode == "Dashboard Temps Réel (Démo Client)":
+    with st.sidebar:
+        st.caption("Mode démo -- données illustratives, non connectées à Supabase.")
+    st.iframe(render_client_dashboard_html(), height="content")
+    st.stop()
+
+with st.sidebar:
     with st.expander("Glossaire des abréviations"):
         st.markdown("""
 - **HP / HC** : Heures Pleines / Heures Creuses (tarif réglementé classique)
