@@ -76,7 +76,7 @@ def _equipment_cards_html() -> str:
                 <span>Puissance</span>
                 <span class="font-mono tabular-nums text-[#cccccc]">{eq['puissance']}</span>
             </div>
-            <canvas id="spark-{i}" height="40"></canvas>
+            <div style="position:relative; height:40px;"><canvas id="spark-{i}"></canvas></div>
         </div>""")
     return "".join(cards)
 
@@ -121,7 +121,7 @@ def render_client_dashboard_html() -> str:
 </head>
 <body class="bg-[#111111] text-[#e5e5e5]">
 
-<div class="flex min-h-screen">
+<div class="flex">
 
   <!-- ============ SIDEBAR ============ -->
   <aside class="w-[220px] flex-shrink-0 bg-[#111111] border-r border-[#262626] flex flex-col justify-between p-4">
@@ -191,7 +191,7 @@ def render_client_dashboard_html() -> str:
     </div>
 
     <!-- Chart + status -->
-    <div class="grid grid-cols-3 gap-6 flex-1 min-h-0">
+    <div class="grid grid-cols-3 gap-6">
 
       <div class="col-span-2 bg-[#181818] border border-[#333333] rounded-[12px] p-5 flex flex-col gap-4">
         <div class="flex items-center justify-between">
@@ -201,7 +201,7 @@ def render_client_dashboard_html() -> str:
             <span class="flex items-center gap-1.5"><span class="w-2.5 h-0.5 bg-[#FFD66B]"></span>Stockage thermique (%)</span>
           </div>
         </div>
-        <div class="flex-1 min-h-[260px]"><canvas id="mainChart"></canvas></div>
+        <div style="position:relative; height:280px;"><canvas id="mainChart"></canvas></div>
         <div class="grid grid-cols-4 gap-3 border-t border-[#262626] pt-4">
           <div class="flex flex-col gap-0.5"><span class="text-[11px] text-[#999999] uppercase tracking-wide">Consom. Moyenne</span><span class="mono text-sm font-bold text-white">186 kWh</span></div>
           <div class="flex flex-col gap-0.5"><span class="text-[11px] text-[#999999] uppercase tracking-wide">Consom. Prévue</span><span class="mono text-sm font-bold text-white">210 kWh</span></div>
@@ -210,7 +210,7 @@ def render_client_dashboard_html() -> str:
         </div>
       </div>
 
-      <div class="flex flex-col gap-4 min-h-0">
+      <div class="flex flex-col gap-4">
         <div class="bg-[#181818] border border-[#333333] rounded-[12px] p-4 flex flex-col gap-3">
           <span class="text-sm font-medium text-white">Statut système</span>
           <ul class="flex flex-col gap-2.5 text-sm">
@@ -222,7 +222,7 @@ def render_client_dashboard_html() -> str:
           <button class="mt-1 w-full bg-[#00A4B4] hover:bg-[#0E7C8C] text-white text-xs font-medium rounded-[6px] py-2 transition-colors">Voir le diagnostic</button>
         </div>
 
-        <div class="bg-[#181818] border border-[#333333] rounded-[12px] p-4 flex flex-col gap-1 flex-1 min-h-0 overflow-y-auto">
+        <div class="bg-[#181818] border border-[#333333] rounded-[12px] p-4 flex flex-col gap-1">
           <span class="text-sm font-medium text-white mb-1">Alertes récentes</span>
           <ul>{alerts_html}</ul>
         </div>
