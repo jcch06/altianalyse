@@ -1,7 +1,12 @@
 # Altileo — Plateforme de supervision client
 
 **Blueprint d'architecture pour le produit temps réel destiné aux clients**
-Version 0.1 — document de travail (à faire évoluer avant le premier commit de code)
+Version 0.2 — décisions structurantes validées (voir §14) ; prêt à scaffolder la Phase 0
+
+> **Décisions verrouillées (§14) :** app mobile **React Native / Expo native** ·
+> **nouveau dépôt `altileo-platform`** · KPIs via **worker Python réutilisant
+> les algos validés** · **nouveau projet Supabase propre** + pont de
+> synchronisation depuis le pilote Fady/Rungis (voir §8).
 
 > Ce document décrit comment transformer le **prototype de dashboard démo**
 > (`client_dashboard_demo.py`, données statiques) en un **produit multi-client
@@ -240,7 +245,35 @@ CO₂). Il ne faut pas les réécrire en TypeScript.
 
 ## 8 — Ingestion (Altileo Box → Cloud)
 
-Comment les mesures arrivent dans Supabase (à préciser avec l'équipe firmware) :
+### Contrainte : un pilote en production à ne pas perturber
+
+Le boîtier installé chez **Fady (MIN de Rungis)** écrit **en continu et en
+production** dans la table `mesures_fady` du **projet Supabase actuel**. Cette
+collecte live ne doit **jamais** être interrompue. Conséquence directe : on ne
+migre pas la base actuelle (§14, décision 4) et on ne reconfigure pas le boîtier
+dans l'immédiat.
+
+### Stratégie en deux temps
+
+**Temps 1 — pont de synchronisation (pendant toute la construction, phases 0→4)**
+- Le boîtier de Fady **continue d'écrire dans `mesures_fady`** sur le projet
+  actuel. Aucun changement de firmware, aucun risque pour le pilote.
+- Un **job de synchronisation** (petit worker planifié, côté couche calcul §7)
+  recopie en continu les nouvelles lignes de `mesures_fady` vers la table
+  `measurements` du **nouveau** projet, en les rattachant au bon
+  `site_id` (Rungis / Entrepôt A) et au bon `equipment_id` / `sensor_id`.
+- Le dashboard client et l'app mobile lisent le **nouveau** projet. Fady voit
+  ses vraies données ; le boîtier ignore l'existence de la nouvelle plateforme.
+- Le pont est **idempotent** (suivi du dernier `timestamp` synchronisé) pour
+  survivre aux coupures réseau sans doublon ni perte.
+
+**Temps 2 — bascule directe (une fois la plateforme stable)**
+- On reconfigure le boîtier, **une seule fois et en conditions contrôlées**,
+  pour qu'il écrive directement dans l'endpoint d'ingestion du nouveau projet.
+- On débranche le job de synchronisation.
+- L'ancien projet peut être archivé / décommissionné.
+
+### Cible d'ingestion pour les nouveaux boîtiers (et Fady après bascule)
 
 - **Option recommandée** : la Box envoie ses mesures (batch HTTP) à une
   **Edge Function Supabase** authentifiée par une **clé de device** ;
@@ -357,18 +390,17 @@ altileo-core-py/              # (peut vivre dans son propre dépôt ou dans serv
 
 ---
 
-## 14 — Décisions à valider avant de scaffolder
+## 14 — Décisions structurantes (validées)
 
-1. **Mobile** : app native Expo dès le départ, ou **PWA-first** (web installable)
-   puis native en phase 4 ?
-2. **Dépôt** : nouveau dépôt `altileo-platform` (recommandé) ou monorepo
-   englobant aussi `altianalyse` ?
-3. **Couche calcul** : worker Python réutilisant les algos (recommandé) ou tout
-   recalculer côté Edge Functions TypeScript ?
-4. **Supabase** : réutiliser le projet Supabase actuel (avec migration du schéma
-   plat vers le schéma relationnel) ou repartir d'un projet propre pour le
-   produit, et garder l'actuel pour l'audit interne ?
+| # | Décision | Choix retenu | Justification |
+|---|---|---|---|
+| 1 | **Mobile** | **App native React Native / Expo** dès le départ | Notifications push riches sur les alertes (dérive thermique, seuil HACCP) = valeur ajoutée clé du mobile ; correspond à la demande d'une « app dédiée » |
+| 2 | **Dépôt** | **Nouveau dépôt `altileo-platform`** | Audiences et cycles de vie distincts du produit client vs l'outil interne `altianalyse` |
+| 3 | **Couche calcul** | **Worker Python réutilisant les algos validés** | Une seule source de vérité (`altileo-core-py`), testée une fois, partagée entre audit interne et produit client → zéro divergence de chiffres |
+| 4 | **Supabase** | **Nouveau projet propre** + pont de synchronisation depuis Fady | Le boîtier de Rungis écrit **en production live** dans `mesures_fady` ; migrer cette base risquerait de casser la collecte pilote (voir §8) |
 
-> Une fois ces 4 points tranchés, l'étape suivante concrète est le **scaffold de
-> la Phase 0** : dépôt monorepo + migrations SQL du schéma + politiques RLS +
-> extraction de `altileo-core-py`.
+> **Prochaine étape concrète — scaffold de la Phase 0 :**
+> 1. Créer le dépôt `altileo-platform` (monorepo Turborepo + pnpm).
+> 2. Écrire les migrations SQL du schéma relationnel (§4) + les politiques RLS (§3).
+> 3. Extraire `altileo-core-py` depuis `app_v2.py` (thermique, tarifs, spot, CO₂) + premiers tests unitaires.
+> 4. Mettre en place le pont de synchronisation `mesures_fady` → nouveau projet (§8, Temps 1).
