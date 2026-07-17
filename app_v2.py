@@ -122,7 +122,7 @@ st.markdown("""<link rel="preconnect" href="https://fonts.googleapis.com">
     --line: #E5E5E5;
 }
 /* ========== Global ========== */
-html, body, [class*="css"] { font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; }
+html, body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; }
 .stApp { background-color: var(--frost); }
 .num, div[data-testid="stMetricValue"], div[data-testid="stMetricDelta"],
 [data-testid="stDataFrame"] { font-family: 'JetBrains Mono', ui-monospace, monospace; font-variant-numeric: tabular-nums; }
